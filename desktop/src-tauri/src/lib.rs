@@ -130,7 +130,7 @@ fn hide_to_tray(app: AppHandle) {
 }
 
 #[tauri::command]
-fn pick_nuvio_exe(app: AppHandle) -> Option<String> {
+async fn pick_nuvio_exe(app: AppHandle) -> Option<String> {
     app.dialog()
         .file()
         .set_title("Select Nuvio HTPC executable (Nuvio.exe)")
@@ -162,6 +162,7 @@ fn get_autostart() -> bool {
 }
 
 #[tauri::command]
+#[cfg_attr(not(target_os = "windows"), allow(unused_variables))]
 fn set_autostart(enabled: bool) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
@@ -213,7 +214,8 @@ pub fn run() {
             let handle = app.handle().clone();
 
             // Launch the bundled Node.js Companion server hidden alongside the desktop app
-            if let Ok(mut guard) = app.state::<CompanionProcess>().0.lock() {
+            let companion_state = app.state::<CompanionProcess>();
+            if let Ok(mut guard) = companion_state.0.lock() {
                 *guard = spawn_companion(&handle);
             }
 
@@ -237,13 +239,15 @@ pub fn run() {
                     "open" => show_main_window(app, false),
                     "pair" => show_main_window(app, true),
                     "restart" => {
-                        if let Ok(mut guard) = app.state::<CompanionProcess>().0.lock() {
+                        let companion_state = app.state::<CompanionProcess>();
+                        if let Ok(mut guard) = companion_state.0.lock() {
                             stop_companion_locked(&mut guard);
                             *guard = spawn_companion(app);
                         }
                     }
                     "quit" => {
-                        if let Ok(mut guard) = app.state::<CompanionProcess>().0.lock() {
+                        let companion_state = app.state::<CompanionProcess>();
+                        if let Ok(mut guard) = companion_state.0.lock() {
                             stop_companion_locked(&mut guard);
                         }
                         app.exit(0);

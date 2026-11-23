@@ -215,7 +215,8 @@ pub fn run() {
 
             // Launch the bundled Node.js Companion server hidden alongside the desktop app
             let companion_state = app.state::<CompanionProcess>();
-            if let Ok(mut guard) = companion_state.0.lock() {
+            let lock_res = companion_state.inner().0.lock();
+            if let Ok(mut guard) = lock_res {
                 *guard = spawn_companion(&handle);
             }
 
@@ -240,14 +241,16 @@ pub fn run() {
                     "pair" => show_main_window(app, true),
                     "restart" => {
                         let companion_state = app.state::<CompanionProcess>();
-                        if let Ok(mut guard) = companion_state.0.lock() {
+                        let lock_res = companion_state.inner().0.lock();
+                        if let Ok(mut guard) = lock_res {
                             stop_companion_locked(&mut guard);
                             *guard = spawn_companion(app);
                         }
                     }
                     "quit" => {
                         let companion_state = app.state::<CompanionProcess>();
-                        if let Ok(mut guard) = companion_state.0.lock() {
+                        let lock_res = companion_state.inner().0.lock();
+                        if let Ok(mut guard) = lock_res {
                             stop_companion_locked(&mut guard);
                         }
                         app.exit(0);

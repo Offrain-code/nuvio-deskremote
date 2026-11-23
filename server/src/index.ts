@@ -57,13 +57,35 @@ function main(): void {
   if (urls.loopback) info(`local debug endpoint: ${urls.loopback}`);
   info(`detected LAN IP: ${pickLanIp()}`);
 
-  process.on('SIGINT', () => {
-    info('shutting down (SIGINT)');
+  let shuttingDown = false;
+  const shutdown = (reason: string): void => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    info(`shutting down (${reason})`);
     bridge.stop();
     screen.stop('server shutting down');
     logtail.stop();
     process.exit(0);
-  });
+  };
+
+  const parentPid = Number(process.env.NUVIO_COMPANION_PARENT_PID ?? '0');
+  if (Number.isInteger(parentPid) && parentPid > 0) {
+    const parentWatch = setInterval(() => {
+      try {
+        process.kill(parentPid, 0);
+      } catch (err) {
+        const code = (err as NodeJS.ErrnoException)?.code;
+        if (code === 'ESRCH') {
+          clearInterval(parentWatch);
+          shutdown(`parent Companion process ${parentPid} exited`);
+        }
+      }
+    }, 1500);
+    parentWatch.unref();
+  }
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('uncaughtException', (err) => {
     warn(`uncaughtException: ${(err as Error).stack ?? err}`);
   });

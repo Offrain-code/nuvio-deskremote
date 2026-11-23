@@ -71,7 +71,9 @@ fn resolve_server_paths(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> 
 fn spawn_companion(app: &AppHandle) -> Option<Child> {
     let (node, entry, workdir) = resolve_server_paths(app)?;
     let mut cmd = Command::new(node);
-    cmd.arg(entry).current_dir(workdir);
+    cmd.arg(entry)
+        .current_dir(workdir)
+        .env("NUVIO_COMPANION_PARENT_PID", std::process::id().to_string());
     #[cfg(target_os = "windows")]
     {
         cmd.creation_flags(CREATE_NO_WINDOW);

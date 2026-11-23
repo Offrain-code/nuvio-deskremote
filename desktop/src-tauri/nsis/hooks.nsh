@@ -1,5 +1,17 @@
-; Automatic Windows Firewall rules during Nuvio DeskRemote Companion install/uninstall
+; Automatic lifecycle and Windows Firewall hooks during Nuvio DeskRemote Companion install/uninstall
 ; Runs elevated via bundle.windows.nsis.installMode = "perMachine"
+!macro NSIS_HOOK_PREINSTALL
+  ; Stop only the bundled Companion Node.js server before overwriting files (never unrelated node.exe processes)
+  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ieq \"$INSTDIR\resources\server\node.exe\" } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  Sleep 600
+!macroend
+
+!macro NSIS_HOOK_PREUNINSTALL
+  ; Stop the Companion app and its bundled Node.js server cleanly before removing files
+  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Get-Process -Name nuvio-deskremote-companion -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ieq \"$INSTDIR\resources\server\node.exe\" } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  Sleep 600
+!macroend
+
 !macro NSIS_HOOK_POSTINSTALL
   ; Clean any stale or auto-blocked rules before adding fresh LAN rules
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=all program="$INSTDIR\resources\server\node.exe"'

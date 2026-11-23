@@ -102,7 +102,7 @@ fun SettingsScreen(
     onDefaultProfileChange: (ScreenProfile) -> Unit,
     discovered: PcService?,
     onRefreshDiscovery: () -> Unit,
-    installedVersion: String = "0.5.0",
+    installedVersion: String = "0.5.1",
     manualUpdateStatus: ManualUpdateCheckStatus = ManualUpdateCheckStatus.IDLE,
     onCheckForUpdates: () -> Unit = {},
     modifier: Modifier = Modifier,

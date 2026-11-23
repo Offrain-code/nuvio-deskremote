@@ -252,7 +252,7 @@ const els = {
   btnUpdateRetry: document.getElementById('btnUpdateRetry'),
 };
 
-let installedVersion = '0.5.0';
+let installedVersion = '0.5.1';
 let updateState = 'hidden'; // 'hidden' | 'available' | 'downloading' | 'ready' | 'error'
 let updateInfo = null;
 let updateProgress = { downloaded: 0, total: 0, percent: 0 };

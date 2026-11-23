@@ -1,6 +1,6 @@
 {
   "name": "nuvio-deskremote-companion",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "private": true,
   "description": "Nuvio DeskRemote Companion Server (Windows LAN) — HTPC control, PC trackpad and low-latency screen share.",
   "type": "commonjs",

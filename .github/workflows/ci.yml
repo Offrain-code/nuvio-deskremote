@@ -50,6 +50,25 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
       - name: Check Tauri v2 Rust crate
         working-directory: desktop/src-tauri
-        run: cargo check
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          $PSNativeCommandUseErrorActionPreference = $false
+          $output = & cargo check --message-format=short 2>&1 | ForEach-Object { "$_" }
+          $code = $LASTEXITCODE
+          $output | ForEach-Object { Write-Host $_ }
+          if ($code -ne 0) {
+            $nonEmpty = @($output | Where-Object { $_.Trim().Length -gt 0 })
+            $tail = @($nonEmpty | Select-Object -Last 12)
+            $matched = @($nonEmpty | Where-Object { $_ -match '(^|:\s*)error(\[E\d+\])?:' } | Select-Object -First 8)
+            $diag = @($matched + $tail | Select-Object -Unique -First 15)
+            foreach ($line in $diag) {
+              Write-Host "::error::$line"
+            }
+            exit $code
+          }

@@ -41,11 +41,28 @@ export class TunnelManager {
     }
   }
 
+  private resolveCloudflaredExe(): string {
+    const localAppData = process.env.LOCALAPPDATA ?? '';
+    const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
+    const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
+    const candidates = [
+      path.resolve(process.cwd(), 'bin', 'cloudflared.exe'),
+      localAppData ? path.join(localAppData, 'Microsoft', 'WinGet', 'Links', 'cloudflared.exe') : '',
+      path.join(programFiles, 'cloudflared', 'cloudflared.exe'),
+      path.join(programFilesX86, 'cloudflared', 'cloudflared.exe'),
+    ];
+    for (const candidate of candidates) {
+      if (candidate && fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+    return 'cloudflared';
+  }
+
   private spawnTunnel(): void {
     if (this.stopped) return;
 
-    const binPath = path.resolve(process.cwd(), 'bin', 'cloudflared.exe');
-    const exe = fs.existsSync(binPath) ? binPath : 'cloudflared';
+    const exe = this.resolveCloudflaredExe();
 
     try {
       const child = spawn(
@@ -75,6 +92,12 @@ export class TunnelManager {
       child.stderr?.on('data', parseChunk);
 
       child.on('error', (err) => {
+        const errCode = (err as NodeJS.ErrnoException).code;
+        if (errCode === 'ENOENT') {
+          this.stopped = true;
+          warn('tunnel: cloudflared not found in server/bin or PATH (install Cloudflare.cloudflared to enable Remote Access)');
+          return;
+        }
         warn(`tunnel: cloudflared error: ${err.message}`);
       });
 

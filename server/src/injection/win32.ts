@@ -173,7 +173,12 @@ export function findNuvioWindow(bind: Win32Bindings, titleExact: string): unknow
     if (bind.IsWindowVisible(h)) {
       const title = windowTitle(bind, h);
       const lower = title.toLowerCase();
-      if (lower.includes('nuvio') && !lower.includes('visual studio code') && !lower.includes('nuvio-remote')) {
+      if (
+        lower.includes('nuvio') &&
+        !lower.includes('visual studio code') &&
+        !lower.includes('nuvio-remote') &&
+        !lower.includes('nuvio deskremote')
+      ) {
         const score = lower === lowerNeedle ? 3 : lower.includes(lowerNeedle.replace('&', '')) ? 2 : 1;
         if (!best || score > best.score) best = { h, score };
       }

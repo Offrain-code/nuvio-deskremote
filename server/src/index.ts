@@ -1,5 +1,5 @@
 import * as path from 'path';
-import { loadConfig } from './config';
+import { loadConfig, userConfigDir } from './config';
 import { error, info, initFileLog, warn } from './logger';
 import { Win32Bindings, loadWin32 } from './injection/win32';
 import { InputInjector } from './injection/input';
@@ -26,7 +26,7 @@ function main(): void {
 
   const dir = __dirname; // dist/ — config.json lives in the server root directory
   const rootDir = path.resolve(dir, '..');
-  initFileLog(rootDir);
+  initFileLog(userConfigDir());
 
   const cfg = loadConfig(rootDir);
   info(`config: port ${cfg.port} (debug loopback: ${cfg.loopback ? 'on' : 'off'})`);

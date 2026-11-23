@@ -41,6 +41,9 @@ function openStream(file: string): void {
 
 export function initFileLog(dir: string): void {
   try {
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
     const file = path.join(dir, 'server.log');
     logFile = file;
     rotateSyncIfNeeded(file);

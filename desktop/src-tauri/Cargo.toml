@@ -1,6 +1,6 @@
 [package]
 name = "nuvio-deskremote-companion"
-version = "0.4.1"
+version = "0.4.2"
 description = "Nuvio DeskRemote Companion — Native Windows desktop companion (Tauri v2) for HTPC, Trackpad, and Screen Share"
 authors = ["Nuvio DeskRemote Contributors"]
 license = "GPL-3.0-only"
@@ -16,6 +16,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-single-instance = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 qrcode = { version = "0.14", default-features = false, features = ["svg"] }

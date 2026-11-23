@@ -227,7 +227,16 @@ fn set_autostart(enabled: bool) -> Result<(), String> {
 pub fn run() {
     let start_minimized = std::env::args().any(|a| a == "--minimized");
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default();
+
+    #[cfg(desktop)]
+    {
+        builder = builder.plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            show_main_window(app, false);
+        }));
+    }
+
+    builder
         .plugin(tauri_plugin_dialog::init())
         .manage(CompanionProcess(Mutex::new(None)))
         .setup(move |app| {

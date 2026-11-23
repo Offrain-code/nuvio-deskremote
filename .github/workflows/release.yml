@@ -47,15 +47,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
       - uses: dtolnay/rust-toolchain@stable
-      - name: Install Tauri CLI v2
-        run: cargo install tauri-cli --version "^2" --locked
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
       - name: Prepare Companion server bundle
         shell: pwsh
         run: ./desktop/scripts/prepare-bundle.ps1
       - name: Build Windows NSIS Installer
-        working-directory: desktop/src-tauri
-        run: cargo tauri build --bundles nsis
+        working-directory: desktop
+        run: npx --yes @tauri-apps/cli@^2 build --bundles nsis
       - uses: actions/upload-artifact@v4
         with:
           name: nuvio-deskremote-windows

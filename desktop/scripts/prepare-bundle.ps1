@@ -20,6 +20,10 @@ if (-not $NodeExe) {
 Write-Host "[1/4] Building Companion TypeScript server..." -ForegroundColor Cyan
 Push-Location $serverDir
 try {
+    if (-not (Test-Path (Join-Path $serverDir "node_modules"))) {
+        npm ci
+        if ($LASTEXITCODE -ne 0) { throw "npm ci failed." }
+    }
     npm run build
     if ($LASTEXITCODE -ne 0) { throw "npm run build failed." }
 } finally {

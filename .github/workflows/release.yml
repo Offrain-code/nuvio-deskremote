@@ -20,11 +20,14 @@ jobs:
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
       - name: Decode release keystore (if configured)
-        if: ${{ secrets.NUVIO_KEYSTORE_B64 != '' }}
         shell: bash
+        env:
+          NUVIO_KEYSTORE_B64: ${{ secrets.NUVIO_KEYSTORE_B64 }}
         run: |
-          echo "${{ secrets.NUVIO_KEYSTORE_B64 }}" | base64 --decode > android/release.keystore
-          echo "NUVIO_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/release.keystore" >> "$GITHUB_ENV"
+          if [ -n "$NUVIO_KEYSTORE_B64" ]; then
+            echo "$NUVIO_KEYSTORE_B64" | base64 --decode > android/release.keystore
+            echo "NUVIO_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/release.keystore" >> "$GITHUB_ENV"
+          fi
       - name: Build Android Release APK
         working-directory: android
         env:

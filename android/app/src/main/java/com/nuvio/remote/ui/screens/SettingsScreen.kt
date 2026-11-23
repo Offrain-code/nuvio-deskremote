@@ -76,6 +76,7 @@ import com.nuvio.remote.ui.theme.LocalNuvioColors
 import com.nuvio.remote.ui.theme.NuvioTypography
 import com.nuvio.remote.ui.theme.accentForScreen
 import com.nuvio.remote.ui.theme.nuvioGlass
+import com.nuvio.remote.update.ManualUpdateCheckStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -101,6 +102,9 @@ fun SettingsScreen(
     onDefaultProfileChange: (ScreenProfile) -> Unit,
     discovered: PcService?,
     onRefreshDiscovery: () -> Unit,
+    installedVersion: String = "0.5.0",
+    manualUpdateStatus: ManualUpdateCheckStatus = ManualUpdateCheckStatus.IDLE,
+    onCheckForUpdates: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val coroutineScope = rememberCoroutineScope()
@@ -188,6 +192,9 @@ fun SettingsScreen(
                 onHapticsChange = onHapticsChange,
                 defaultProfile = defaultProfile,
                 onSelectProfile = onDefaultProfileChange,
+                installedVersion = installedVersion,
+                manualUpdateStatus = manualUpdateStatus,
+                onCheckForUpdates = onCheckForUpdates,
             )
         }
     }
@@ -800,6 +807,9 @@ private fun InteractionAndScreenCard(
     onHapticsChange: (Boolean) -> Unit,
     defaultProfile: ScreenProfile,
     onSelectProfile: (ScreenProfile) -> Unit,
+    installedVersion: String,
+    manualUpdateStatus: ManualUpdateCheckStatus,
+    onCheckForUpdates: () -> Unit,
 ) {
     val context = LocalContext.current
     val scheme = LocalNuvioColors.current
@@ -922,10 +932,42 @@ private fun InteractionAndScreenCard(
             }
         }
 
+        SettingsButton(
+            label = if (manualUpdateStatus == ManualUpdateCheckStatus.CHECKING) {
+                l10n("Checking for updates…", "Verificando atualizações…")
+            } else {
+                l10n("Check for updates (v$installedVersion)", "Verificar atualizações (v$installedVersion)")
+            },
+            highlighted = false,
+            enabled = manualUpdateStatus != ManualUpdateCheckStatus.CHECKING,
+            onClick = onCheckForUpdates,
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (manualUpdateStatus == ManualUpdateCheckStatus.UP_TO_DATE) {
+            NuvioText(
+                text = l10n(
+                    "You are on the latest version (v$installedVersion).",
+                    "Você já está na versão mais recente (v$installedVersion).",
+                ),
+                style = NuvioTypography.KeyShortcutBadge,
+                color = scheme.statusOnline,
+            )
+        } else if (manualUpdateStatus == ManualUpdateCheckStatus.FAILED) {
+            NuvioText(
+                text = l10n(
+                    "Could not reach GitHub Releases. Check your internet connection.",
+                    "Não foi possível consultar o GitHub Releases. Verifique sua conexão.",
+                ),
+                style = NuvioTypography.KeyShortcutBadge,
+                color = scheme.statusWarning,
+            )
+        }
+
         NuvioText(
             text = l10n(
-                "Nuvio DeskRemote • Appearance follows your system light or dark theme.",
-                "Nuvio DeskRemote • Aparência acompanha o tema claro ou escuro do sistema.",
+                "Nuvio DeskRemote v$installedVersion • Appearance follows your system light or dark theme.",
+                "Nuvio DeskRemote v$installedVersion • Aparência acompanha o tema claro ou escuro do sistema.",
             ),
             style = NuvioTypography.KeyShortcutBadge,
             color = scheme.textMuted,

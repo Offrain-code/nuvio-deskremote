@@ -26,6 +26,17 @@
         </div>
 
         <div class="header-actions">
+          <button
+            id="btnCheckUpdate"
+            type="button"
+            class="chip chip-neutral chip-btn"
+            data-i18n-title="checkUpdateTitle"
+            title="Check for updates"
+            aria-label="Check for updates"
+          >
+            <span id="updateDot" class="led led-online hidden"></span>
+            <span id="headerVersionLabel">v0.5.0</span>
+          </button>
           <div class="lang-switcher" role="group" aria-label="Language">
             <button id="btnLangEn" type="button" class="lang-btn" data-lang="en">EN</button>
             <button id="btnLangPt" type="button" class="lang-btn" data-lang="pt-BR">PT-BR</button>
@@ -197,6 +208,91 @@
           </section>
         </div>
       </main>
+    </div>
+
+    <!-- Automatic Update Modal (Liquid Glass outer container, 100% opaque inner blocks — DESIGN-SPEC §5.11) -->
+    <div
+      id="updateModalBackdrop"
+      class="update-backdrop hidden"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="updateModalTitle"
+    >
+      <div class="update-modal-glass">
+        <div class="update-modal-head">
+          <div class="brand-badge update-brand-badge" aria-hidden="true">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M8 5.14v13.72a1 1 0 0 0 1.52.85l10.6-6.86a1 1 0 0 0 0-1.7L9.52 4.29A1 1 0 0 0 8 5.14z" />
+            </svg>
+          </div>
+          <div class="update-title-block">
+            <span id="updateModalKicker" class="update-kicker">GITHUB RELEASE • AUTO-UPDATE</span>
+            <h2 id="updateModalTitle" class="update-title">Update available</h2>
+          </div>
+          <span id="updateVersionBadge" class="chip chip-accent update-version-badge">v0.4.3 → v0.5.0</span>
+        </div>
+
+        <div id="updateViewAvailable" class="update-state-view">
+          <p id="updateAvailableSubtitle" class="helper-text">
+            A new official Windows Companion release is ready to install.
+          </p>
+
+          <div class="opaque-card update-notes-box">
+            <div class="card-head">
+              <h3 id="updateNotesHeading" class="update-notes-heading">WHAT'S NEW</h3>
+              <span id="updatePkgBadge" class="chip chip-online">Windows .exe</span>
+            </div>
+            <ul id="updateNotesList" class="update-notes-list"></ul>
+          </div>
+
+          <p id="updatePreserveHint" class="update-preserve-hint">
+            Paired phones, LAN_ONLY PIN policy, and Nuvio.exe path are preserved automatically.
+          </p>
+
+          <div class="update-actions">
+            <button id="btnUpdateLater" type="button" class="btn-secondary update-btn">Later</button>
+            <button id="btnUpdateNow" type="button" class="btn-primary update-btn update-btn-primary">
+              Update now
+            </button>
+          </div>
+        </div>
+
+        <div id="updateViewProgress" class="update-state-view hidden">
+          <div class="opaque-cell update-progress-box">
+            <div class="update-progress-meta">
+              <span id="updateAssetFileLabel" class="mono-ellipsis">Nuvio-DeskRemote-Setup.exe</span>
+              <span id="updateProgressLabel" class="update-progress-pct">0%</span>
+            </div>
+            <div class="update-progress-track">
+              <div id="updateProgressBar" class="update-progress-fill"></div>
+            </div>
+            <div class="update-progress-foot">
+              <span id="updateProgressStatus" class="helper-text">Downloading Windows installer (.exe)…</span>
+              <span id="updateShaBadge" class="chip chip-online hidden">SHA-256 OK</span>
+            </div>
+          </div>
+
+          <div class="update-actions">
+            <button id="btnUpdateCancel" type="button" class="btn-secondary update-btn">Cancel</button>
+            <button id="btnUpdateInstall" type="button" class="btn-primary update-btn update-btn-primary hidden">
+              Install &amp; Restart
+            </button>
+          </div>
+        </div>
+
+        <div id="updateViewError" class="update-state-view hidden">
+          <div class="opaque-cell update-error-box">
+            <p id="updateErrorText" class="update-error-msg">
+              Could not download the package from GitHub Releases. Check your connection and try again.
+            </p>
+          </div>
+
+          <div class="update-actions">
+            <button id="btnUpdateCloseErr" type="button" class="btn-secondary update-btn">Close</button>
+            <button id="btnUpdateRetry" type="button" class="btn-primary update-btn update-btn-primary">Retry</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="app.js"></script>

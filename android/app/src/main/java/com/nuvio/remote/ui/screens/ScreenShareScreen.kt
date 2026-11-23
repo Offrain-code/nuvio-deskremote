@@ -493,68 +493,88 @@ internal fun VideoStreamViewport(
     val currentHaptics by rememberUpdatedState(hapticsEnabled)
     val decisionPx = with(density) { 20.dp.toPx() }
     val rightStripPx = with(density) { 30.dp.toPx() }
-    val gestureHelper = remember(conn, decisionPx) { ViewportGestureHelper(conn, decisionPx) }
-    val tapSnap = remember { TapSnapState() }
     val maxSnapPx = with(density) { 42.dp.toPx() }
+    val dragEngagePx = with(density) { 8.dp.toPx() }
+    val tapSlopPx = with(density) { 12.dp.toPx() }
+    val gestureHelper = remember(conn, decisionPx, maxSnapPx, dragEngagePx, tapSlopPx) {
+        ViewportGestureHelper(
+            conn = conn,
+            decisionDistancePx = decisionPx,
+            maxDoubleTapDistancePx = maxSnapPx,
+            dragEngageMovePx = dragEngagePx,
+            maxTapMovePx = tapSlopPx,
+        )
+    }
+    val tapSnap = remember { TapSnapState() }
+    var gestureDragActive by remember { mutableStateOf(false) }
+
+    DisposableEffect(gestureHelper) {
+        onDispose {
+            if (gestureHelper.cancelGestureDrag()) {
+                gestureDragActive = false
+            }
+        }
+    }
+
+    val viewportAccess = remember {
+        ViewportTransformAccess(
+            getContainerWidth = { containerSize.width },
+            getVideoOrigin = { videoOrigin },
+            getVideoSize = { videoSize },
+            getDirectTouch = { currentDirectTouch },
+            getMonitor = { currentMonitor },
+            getZoom = { zoom },
+            getPan = { panOffset },
+        )
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .onSizeChanged { containerSize = it }
             .clip(RoundedCornerShape(0.dp))
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onTap = { pos ->
-                        currentOnInteraction()
-                        if (currentHaptics) Haptics.action(context)
-                        val insideVideo = isPointInsideVideoRect(pos, videoOrigin, videoSize)
-                        val useDirect = currentDirectTouch && insideVideo
-                        val localPos = pos - videoOrigin
-                        val targetPos = if (useDirect) {
-                            tapSnap.resolveTap(localPos, SystemClock.elapsedRealtime(), maxSnapPx)
-                        } else {
-                            localPos
-                        }
-                        gestureHelper.dispatchTap(
-                            pos = targetPos,
-                            directTouch = useDirect,
-                            monitor = currentMonitor,
-                            viewSize = videoSize,
-                            zoom = zoom,
-                            panOffset = panOffset,
-                        )
-                    },
-                    onLongPress = { pos ->
-                        currentOnInteraction()
-                        if (currentHaptics) Haptics.toggle(context)
-                        val insideVideo = isPointInsideVideoRect(pos, videoOrigin, videoSize)
-                        gestureHelper.dispatchRightClick(
-                            pos = pos - videoOrigin,
-                            directTouch = currentDirectTouch && insideVideo,
-                            monitor = currentMonitor,
-                            viewSize = videoSize,
-                            zoom = zoom,
-                            panOffset = panOffset,
-                        )
-                    },
-                )
-            }
             .videoViewportDragGestures(
                 gestureHelper = gestureHelper,
                 rightStripPx = rightStripPx,
-                getContainerWidth = { containerSize.width },
-                getVideoOrigin = { videoOrigin },
-                getVideoSize = { videoSize },
-                getDirectTouch = { currentDirectTouch },
-                getMonitor = { currentMonitor },
-                getZoom = { zoom },
-                getPan = { panOffset },
+                access = viewportAccess,
                 onInteraction = { currentOnInteraction() },
+                onDragHoldVisualChange = { active ->
+                    gestureDragActive = active
+                    if (currentHaptics) {
+                        if (active) Haptics.toggle(context) else Haptics.action(context)
+                    }
+                },
                 onTransform = { nextZoom, nextPan ->
                     zoom = nextZoom
                     panOffset = nextPan
                 },
-            ),
+            )
+            .pointerInput(gestureHelper, tapSnap, maxSnapPx) {
+                detectTapGestures(
+                    onTap = { pos ->
+                        gestureHelper.handleViewportTap(
+                            pos = pos,
+                            tapSnap = tapSnap,
+                            maxSnapPx = maxSnapPx,
+                            access = viewportAccess,
+                            onAccepted = {
+                                currentOnInteraction()
+                                if (currentHaptics) Haptics.action(context)
+                            },
+                        )
+                    },
+                    onLongPress = { pos ->
+                        gestureHelper.handleViewportLongPress(
+                            pos = pos,
+                            access = viewportAccess,
+                            onAccepted = {
+                                currentOnInteraction()
+                                if (currentHaptics) Haptics.toggle(context)
+                            },
+                        )
+                    },
+                )
+            },
     ) {
         val graphicsModifier = Modifier
             .fillMaxSize()
@@ -602,6 +622,7 @@ internal fun VideoStreamViewport(
             if (showFallbackCursor) {
                 ScreenShareFallbackCursorOverlay(
                     conn = conn,
+                    dragHighlight = gestureDragActive,
                     modifier = graphicsModifier,
                 )
             }
@@ -665,59 +686,86 @@ private fun ZoomResetPill(isBackdropLight: Boolean, onReset: () -> Unit, modifie
     }
 }
 
+private class ViewportTransformAccess(
+    val getContainerWidth: () -> Int,
+    val getVideoOrigin: () -> Offset,
+    val getVideoSize: () -> IntSize,
+    val getDirectTouch: () -> Boolean,
+    val getMonitor: () -> Int,
+    val getZoom: () -> Float,
+    val getPan: () -> Offset,
+)
+
 private fun Modifier.videoViewportDragGestures(
     gestureHelper: ViewportGestureHelper,
     rightStripPx: Float,
-    getContainerWidth: () -> Int,
-    getVideoOrigin: () -> Offset,
-    getVideoSize: () -> IntSize,
-    getDirectTouch: () -> Boolean,
-    getMonitor: () -> Int,
-    getZoom: () -> Float,
-    getPan: () -> Offset,
+    access: ViewportTransformAccess,
     onInteraction: () -> Unit,
+    onDragHoldVisualChange: (Boolean) -> Unit,
     onTransform: (Float, Offset) -> Unit,
 ): Modifier = pointerInput(gestureHelper, rightStripPx) {
     awaitEachGesture {
         val firstDown = awaitFirstDown(requireUnconsumed = false)
         onInteraction()
-        gestureHelper.resetDrag()
-        val startedInScrollStrip = isPointInRightScrollStrip(firstDown.position, getContainerWidth(), rightStripPx)
-        val startedInsideVideo = isPointInsideVideoRect(firstDown.position, getVideoOrigin(), getVideoSize())
-        var maxPointers = 1
-        while (true) {
-            val event = awaitPointerEvent()
-            val pressed = event.changes.filter { it.pressed }
-            if (pressed.isEmpty()) break
-            if (pressed.size > maxPointers) maxPointers = pressed.size
-            if (pressed.size >= 2) {
-                val (nextZoom, nextPan) = gestureHelper.handleMultiTouch(
-                    zoomChange = event.calculateZoom(),
-                    panChange = event.calculatePan(),
-                    currentZoom = getZoom(),
-                    currentPan = getPan(),
-                    viewSize = getVideoSize(),
+        val session = gestureHelper.beginViewportGesture(firstDown.position, rightStripPx, access)
+        try {
+            var active = true
+            while (active) {
+                val event = awaitViewportEventWithHoldTimeout(
+                    gestureHelper = gestureHelper,
+                    session = session,
+                    access = access,
+                    onDragEngaged = { onDragHoldVisualChange(true) },
                 )
-                onTransform(nextZoom, nextPan)
-                event.changes.forEach { if (it.positionChanged()) it.consume() }
-            } else if (maxPointers == 1) {
-                if (startedInScrollStrip) {
-                    gestureHelper.handleRightEdgeScroll(pressed[0])
-                } else {
-                    gestureHelper.handleSingleFingerMove(
-                        change = pressed[0],
-                        directTouch = getDirectTouch() && startedInsideVideo,
-                        videoOrigin = getVideoOrigin(),
-                        monitor = getMonitor(),
-                        viewSize = getVideoSize(),
-                        zoom = getZoom(),
-                        panOffset = getPan(),
+                if (event != null) {
+                    active = gestureHelper.processViewportPointerEvent(
+                        event = event,
+                        session = session,
+                        access = access,
+                        onDragHoldVisualChange = onDragHoldVisualChange,
+                        onTransform = onTransform,
                     )
                 }
+            }
+        } finally {
+            if (!session.finishedNormally && gestureHelper.cancelGestureDrag()) {
+                onDragHoldVisualChange(false)
             }
         }
     }
 }
+
+private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.awaitViewportEventWithHoldTimeout(
+    gestureHelper: ViewportGestureHelper,
+    session: ViewportGestureSession,
+    access: ViewportTransformAccess,
+    onDragEngaged: () -> Unit,
+): androidx.compose.ui.input.pointer.PointerEvent? {
+    val shouldTimeout = session.maxPointers == 1 &&
+        !session.startedInScrollStrip &&
+        gestureHelper.isDoubleTapDragArmed
+    if (!shouldTimeout) return awaitPointerEvent()
+    val waitMs = gestureHelper.remainingDoubleTapHoldMs(SystemClock.elapsedRealtime())
+    val awaited = withTimeoutOrNull(waitMs) { awaitPointerEvent() }
+    if (awaited == null &&
+        gestureHelper.tryEngageHoldTimeout(
+            nowMs = SystemClock.elapsedRealtime(),
+            directTouch = session.useDirectForGesture,
+            access = access,
+        )
+    ) {
+        onDragEngaged()
+    }
+    return awaited
+}
+
+private class ViewportGestureSession(
+    val startedInScrollStrip: Boolean,
+    val useDirectForGesture: Boolean,
+    var lastSinglePos: Offset,
+    var maxPointers: Int = 1,
+    var finishedNormally: Boolean = false,
+)
 
 @Composable
 private fun ScreenShareFrameOverlay(conn: NuvioConnection, modifier: Modifier = Modifier) {
@@ -735,14 +783,32 @@ private fun ScreenShareFrameOverlay(conn: NuvioConnection, modifier: Modifier = 
 }
 
 @Composable
-private fun ScreenShareFallbackCursorOverlay(conn: NuvioConnection, modifier: Modifier = Modifier) {
+private fun ScreenShareFallbackCursorOverlay(
+    conn: NuvioConnection,
+    dragHighlight: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
     val remoteCursor by conn.remoteCursor.collectAsState()
+    val scheme = LocalNuvioColors.current
     val pointerPath = remember { Path() }
     if (remoteCursor.third) {
         Canvas(modifier = modifier) {
             val cx = remoteCursor.first * size.width
             val cy = remoteCursor.second * size.height
             val u = 1.15.dp.toPx()
+            if (dragHighlight) {
+                drawCircle(
+                    color = scheme.statusWarning.copy(alpha = 0.24f),
+                    radius = 15.dp.toPx(),
+                    center = Offset(cx, cy),
+                )
+                drawCircle(
+                    color = scheme.statusWarning.copy(alpha = 0.92f),
+                    radius = 15.dp.toPx(),
+                    center = Offset(cx, cy),
+                    style = Stroke(width = 2.dp.toPx()),
+                )
+            }
             pointerPath.reset()
             pointerPath.moveTo(cx, cy)
             pointerPath.lineTo(cx, cy + 15f * u)
@@ -769,13 +835,174 @@ private fun ScreenShareFallbackCursorOverlay(conn: NuvioConnection, modifier: Mo
 private class ViewportGestureHelper(
     private val conn: NuvioConnection,
     decisionDistancePx: Float,
+    maxDoubleTapDistancePx: Float,
+    dragEngageMovePx: Float,
+    maxTapMovePx: Float,
 ) {
     private val classifier = MultiTouchGestureClassifier(decisionDistancePx = decisionDistancePx)
+    private val doubleTapDrag = DoubleTapDragTracker(
+        maxDoubleTapDistancePx = maxDoubleTapDistancePx,
+        engageMovePx = dragEngageMovePx,
+        maxTapMovePx = maxTapMovePx,
+    )
     private var totalMovedPx = 0f
+    private var suppressNextTap = false
+
+    val isDoubleTapDragArmed: Boolean
+        get() = doubleTapDrag.isArmed
+
+    val isGestureDragActive: Boolean
+        get() = doubleTapDrag.isDragging
+
+    fun beginViewportGesture(
+        downPos: Offset,
+        rightStripPx: Float,
+        access: ViewportTransformAccess,
+    ): ViewportGestureSession {
+        resetDrag()
+        val startedInScrollStrip = isPointInRightScrollStrip(downPos, access.getContainerWidth(), rightStripPx)
+        val startedInsideVideo = isPointInsideVideoRect(downPos, access.getVideoOrigin(), access.getVideoSize())
+        if (!startedInScrollStrip) {
+            doubleTapDrag.onPointerDown(downPos, SystemClock.elapsedRealtime())
+        }
+        return ViewportGestureSession(
+            startedInScrollStrip = startedInScrollStrip,
+            useDirectForGesture = access.getDirectTouch() && startedInsideVideo,
+            lastSinglePos = downPos,
+        )
+    }
+
+    fun processViewportPointerEvent(
+        event: androidx.compose.ui.input.pointer.PointerEvent,
+        session: ViewportGestureSession,
+        access: ViewportTransformAccess,
+        onDragHoldVisualChange: (Boolean) -> Unit,
+        onTransform: (Float, Offset) -> Unit,
+    ): Boolean {
+        val pressed = event.changes.filter { it.pressed }
+        if (pressed.isEmpty()) {
+            session.finishedNormally = true
+            val upPos = event.changes.firstOrNull()?.position ?: session.lastSinglePos
+            if (session.maxPointers == 1 && !session.startedInScrollStrip &&
+                onSinglePointerUp(upPos, SystemClock.elapsedRealtime())
+            ) {
+                event.changes.forEach { it.consume() }
+                onDragHoldVisualChange(false)
+            }
+            return false
+        }
+        if (pressed.size > session.maxPointers) session.maxPointers = pressed.size
+        if (pressed.size >= 2) {
+            if (cancelGestureDrag()) onDragHoldVisualChange(false)
+            val (nextZoom, nextPan) = handleMultiTouch(
+                zoomChange = event.calculateZoom(),
+                panChange = event.calculatePan(),
+                currentZoom = access.getZoom(),
+                currentPan = access.getPan(),
+                viewSize = access.getVideoSize(),
+            )
+            onTransform(nextZoom, nextPan)
+            event.changes.forEach { if (it.positionChanged()) it.consume() }
+        } else if (session.maxPointers == 1) {
+            val change = pressed[0]
+            session.lastSinglePos = change.position
+            if (session.startedInScrollStrip) {
+                handleRightEdgeScroll(change)
+            } else {
+                val engaged = handleSingleFingerMove(
+                    change = change,
+                    nowMs = SystemClock.elapsedRealtime(),
+                    directTouch = session.useDirectForGesture,
+                    access = access,
+                )
+                if (engaged) onDragHoldVisualChange(true)
+            }
+        }
+        return true
+    }
+
+    fun handleViewportTap(
+        pos: Offset,
+        tapSnap: TapSnapState,
+        maxSnapPx: Float,
+        access: ViewportTransformAccess,
+        onAccepted: () -> Unit,
+    ) {
+        if (consumeSuppressNextTap()) return
+        onAccepted()
+        val videoOrigin = access.getVideoOrigin()
+        val videoSize = access.getVideoSize()
+        val useDirect = access.getDirectTouch() && isPointInsideVideoRect(pos, videoOrigin, videoSize)
+        val localPos = pos - videoOrigin
+        val targetPos = if (useDirect) {
+            tapSnap.resolveTap(localPos, SystemClock.elapsedRealtime(), maxSnapPx)
+        } else {
+            localPos
+        }
+        dispatchTap(targetPos, useDirect, access.getMonitor(), videoSize, access.getZoom(), access.getPan())
+    }
+
+    fun handleViewportLongPress(pos: Offset, access: ViewportTransformAccess, onAccepted: () -> Unit) {
+        if (isGestureDragActive) return
+        onAccepted()
+        val videoOrigin = access.getVideoOrigin()
+        val videoSize = access.getVideoSize()
+        val useDirect = access.getDirectTouch() && isPointInsideVideoRect(pos, videoOrigin, videoSize)
+        dispatchRightClick(
+            pos = pos - videoOrigin,
+            directTouch = useDirect,
+            monitor = access.getMonitor(),
+            viewSize = videoSize,
+            zoom = access.getZoom(),
+            panOffset = access.getPan(),
+        )
+    }
 
     fun resetDrag() {
         classifier.reset()
         totalMovedPx = 0f
+    }
+
+    fun remainingDoubleTapHoldMs(nowMs: Long): Long = doubleTapDrag.remainingHoldMs(nowMs)
+
+    fun tryEngageHoldTimeout(nowMs: Long, directTouch: Boolean, access: ViewportTransformAccess): Boolean {
+        if (!doubleTapDrag.onHoldTimeout(nowMs)) return false
+        engageLeftHoldAtAnchor(directTouch = directTouch, access = access)
+        return true
+    }
+
+    fun onSinglePointerUp(pos: Offset, nowMs: Long): Boolean {
+        if (!doubleTapDrag.onPointerUp(pos, nowMs)) return false
+        conn.sendMouseHold(MouseButtons.LEFT, false)
+        return true
+    }
+
+    fun cancelGestureDrag(): Boolean {
+        if (!doubleTapDrag.onCancel()) return false
+        conn.sendMouseHold(MouseButtons.LEFT, false)
+        return true
+    }
+
+    fun consumeSuppressNextTap(): Boolean {
+        if (!suppressNextTap) return false
+        suppressNextTap = false
+        return true
+    }
+
+    private fun engageLeftHoldAtAnchor(directTouch: Boolean, access: ViewportTransformAccess) {
+        suppressNextTap = true
+        if (directTouch) {
+            val localAnchor = doubleTapDrag.anchorPosition - access.getVideoOrigin()
+            val (nx, ny) = mapViewportToNormalized(
+                pos = localAnchor,
+                size = access.getVideoSize(),
+                zoom = access.getZoom(),
+                pan = access.getPan(),
+            )
+            conn.sendMouseAbs(nx, ny, access.getMonitor(), down = MouseButtons.LEFT)
+        } else {
+            conn.sendMouseHold(MouseButtons.LEFT, true)
+        }
     }
 
     fun dispatchTap(
@@ -844,18 +1071,32 @@ private class ViewportGestureHelper(
 
     fun handleSingleFingerMove(
         change: androidx.compose.ui.input.pointer.PointerInputChange,
+        nowMs: Long,
         directTouch: Boolean,
-        videoOrigin: Offset,
-        monitor: Int,
-        viewSize: IntSize,
-        zoom: Float,
-        panOffset: Offset,
-    ) {
+        access: ViewportTransformAccess,
+    ): Boolean {
         val delta = change.position - change.previousPosition
-        if (delta == Offset.Zero) return
-        totalMovedPx += delta.getDistance()
+        if (delta == Offset.Zero) {
+            if (doubleTapDrag.isDragging) change.consume()
+            return false
+        }
+        val deltaDist = delta.getDistance()
+        totalMovedPx += deltaDist
+        val engagedNow = doubleTapDrag.onPointerMove(change.position, deltaDist, nowMs)
+        if (engagedNow) {
+            engageLeftHoldAtAnchor(directTouch = directTouch, access = access)
+        }
+        val viewSize = access.getVideoSize()
+        val zoom = access.getZoom()
+        val panOffset = access.getPan()
+        val monitor = access.getMonitor()
         if (directTouch) {
-            val (nx, ny) = mapViewportToNormalized(change.position - videoOrigin, viewSize, zoom, panOffset)
+            val (nx, ny) = mapViewportToNormalized(
+                change.position - access.getVideoOrigin(),
+                viewSize,
+                zoom,
+                panOffset,
+            )
             conn.sendMouseAbs(nx, ny, monitor)
         } else {
             val cur = conn.remoteCursor.value
@@ -865,9 +1106,10 @@ private class ViewportGestureHelper(
             val ny = (cur.second + (delta.y / vh) * 1.35f).coerceIn(0f, 1f)
             conn.sendMouseAbs(nx, ny, monitor)
         }
-        if (totalMovedPx > 2.5f) {
+        if (totalMovedPx > 2.5f || doubleTapDrag.isDragging) {
             change.consume()
         }
+        return engagedNow
     }
 }
 

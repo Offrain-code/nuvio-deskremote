@@ -1,3 +1,5 @@
+mod updater;
+
 use qrcode::render::svg;
 use qrcode::QrCode;
 use std::path::PathBuf;
@@ -12,9 +14,9 @@ use tauri_plugin_dialog::DialogExt;
 use std::os::windows::process::CommandExt;
 
 #[cfg(target_os = "windows")]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-struct CompanionProcess(Mutex<Option<Child>>);
+pub(crate) struct CompanionProcess(pub(crate) Mutex<Option<Child>>);
 
 #[cfg(target_os = "windows")]
 fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
@@ -77,7 +79,7 @@ fn spawn_companion(app: &AppHandle) -> Option<Child> {
     cmd.spawn().ok()
 }
 
-fn stop_companion_locked(guard: &mut Option<Child>) {
+pub(crate) fn stop_companion_locked(guard: &mut Option<Child>) {
     if let Some(mut child) = guard.take() {
         let _ = child.kill();
         let _ = child.wait();
@@ -239,6 +241,7 @@ pub fn run() {
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(CompanionProcess(Mutex::new(None)))
+        .manage(updater::UpdateState::new())
         .setup(move |app| {
             let handle = app.handle().clone();
 
@@ -316,7 +319,12 @@ pub fn run() {
             hide_to_tray,
             pick_nuvio_exe,
             get_autostart,
-            set_autostart
+            set_autostart,
+            updater::get_app_version,
+            updater::check_github_update,
+            updater::download_github_update,
+            updater::cancel_github_update,
+            updater::install_downloaded_update
         ])
         .run(tauri::generate_context!())
         .expect("error running Nuvio DeskRemote Companion");

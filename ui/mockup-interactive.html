@@ -2982,6 +2982,9 @@
     </div>
 
     <div class="scenario-strip" id="scenarioStrip">
+      <button class="scen-btn" data-scen="update-android" onclick="goScenario('update-android')">00. Android • Popup Atualização (GitHub) <span class="scen-tag">Update</span></button>
+      <button class="scen-btn" data-scen="update-android-states" onclick="goScenario('update-android-states')">00b. Android • Progresso &amp; Erro Update <span class="scen-tag">Update</span></button>
+      <button class="scen-btn" data-scen="update-desktop" onclick="goScenario('update-desktop')">00c. Companion Windows • Popup Update <span class="scen-tag">Update</span></button>
       <button class="scen-btn" data-scen="desktop-companion" onclick="goScenario('desktop-companion')">0A. Companion Windows • Pareamento QR/PIN <span class="scen-tag">Desktop</span></button>
       <button class="scen-btn" data-scen="desktop-companion-tray" onclick="goScenario('desktop-companion-tray')">0B. Companion Windows • Remoto &amp; Bandeja <span class="scen-tag">Desktop</span></button>
       <button class="scen-btn" data-scen="onboarding" onclick="goScenario('onboarding')">0C. Android • Primeiro Acesso (Onboarding) <span class="scen-tag">Novo</span></button>
@@ -3170,6 +3173,21 @@ const state = {
 };
 
 const SCENARIO_META = {
+  'update-android': {
+    title: 'Android — Popup de Atualização Automática (Liquid Glass REGULAR • GitHub Releases)',
+    sub: 'Modal flutuante sobre scrim escuro translúcido (v0.4.3 → v0.5.0), bloco interno opaco de novidades (zero vidro sobre vidro) e botões Mais tarde / Atualizar agora (≥ 48dp).',
+    tab: 'remote', seg: 0
+  },
+  'update-android-states': {
+    title: 'Android — Estados do Popup de Atualização: Baixando APK / Pronto & Estado de Erro',
+    sub: 'Progresso linear com percentual e MB tabulares (68% • 9,6 / 14,2 MB), estado Pronto para instalar e estado de erro com Tentar novamente / Fechar (≥ 48dp).',
+    tab: 'remote', seg: 0
+  },
+  'update-desktop': {
+    title: 'Windows Desktop Companion — Popup Modal de Atualização Automática (EN / PT-BR)',
+    sub: 'Mesma linguagem Liquid Glass de desktop/ui/styles.css: modal flutuante sobre scrim, versão v0.4.3 → v0.5.0, notas opacas, Update now / Later e progresso do instalador .exe.',
+    tab: 'ajustes', seg: -1
+  },
   'desktop-companion': {
     title: 'Janela Desktop Windows — Nuvio DeskRemote Companion (Pareamento QR + PIN 120s)',
     sub: 'Janela nativa Tauri v2 / WebView2 em Liquid Glass: QR Code + PIN de 6 dígitos em destaque, status 8787/47321/IP, dispositivos pareados e Acesso Remoto desligado por padrão.',
@@ -3263,7 +3281,13 @@ function renderTopHud(scen, opts = {}) {
   const isOffline = opts.wolOffline ?? state.wolOffline;
   let rightHtml = '';
 
-  if (scen === 'onboarding') {
+  if (scen === 'update-android' || scen === 'update-android-states') {
+    rightHtml = `
+      <div class="mode-top-actions">
+        <span class="mode-badge-neutral">GitHub Release • v0.5.0</span>
+      </div>
+    `;
+  } else if (scen === 'onboarding') {
     rightHtml = `
       <div class="mode-top-actions">
         <span class="mode-badge-neutral">Nuvio DeskRemote</span>
@@ -5837,7 +5861,323 @@ function renderIconesWindow() {
   `;
 }
 
+function renderUpdateAndroidAvailable() {
+  const notes = [
+    { pt: 'Atualização automática integrada via GitHub Releases', en: 'Built-in auto-update via GitHub Releases' },
+    { pt: 'Pareamento rápido por QR Code + PIN de 120s na LAN', en: 'Quick LAN pairing via QR Code + 120s PIN' },
+    { pt: 'Cockpit e Trackpad responsivos para telas de 320–360dp', en: 'Responsive Cockpit & Trackpad for 320–360dp screens' }
+  ];
+
+  return `
+    <div class="tab-body morph-in" style="position:relative;padding:0 12px 6px;display:flex;flex-direction:column;justify-content:center;">
+      <!-- Fundo visual inerte do Cockpit + Scrim Translúcido (sem botões de fundo para evitar colisão de foco) -->
+      <div aria-hidden="true" style="position:absolute;inset:0 12px 6px;border-radius:24px;overflow:hidden;pointer-events:none;display:flex;flex-direction:column;justify-content:space-between;padding:12px;opacity:0.32;filter:blur(2px);">
+        <div style="display:flex;justify-content:space-between;padding:0 8px;">
+          <div style="width:38px;height:38px;border-radius:50%;background:var(--content-cell);border:1px solid var(--content-border);"></div>
+          <div style="width:38px;height:38px;border-radius:50%;background:var(--content-cell);border:1px solid var(--content-border);"></div>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px;">
+          <div style="width:48px;height:148px;border-radius:24px;background:var(--content-cell);border:1px solid var(--content-border);"></div>
+          <div style="width:164px;height:164px;border-radius:50%;background:var(--content-cell);border:1px solid var(--content-border);"></div>
+          <div style="width:48px;height:148px;border-radius:24px;background:var(--content-cell);border:1px solid var(--content-border);"></div>
+        </div>
+        <div style="height:108px;border-radius:20px;background:var(--content-card);border:1px solid var(--content-border);"></div>
+      </div>
+
+      <!-- Scrim Translúcido sobre o palco -->
+      <div aria-hidden="true" style="position:absolute;inset:0 6px 2px;border-radius:26px;background:rgba(5,7,12,0.46);pointer-events:none;"></div>
+
+      <!-- Popup Modal Flutuante Central em Liquid Glass REGULAR (elevated) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Atualização disponível" style="position:relative;z-index:5;border-radius:24px;padding:15px 14px;display:flex;flex-direction:column;gap:10px;">
+        <!-- Cabeçalho: Ícone Nuvio + Kicker + Badge de Versão -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:9px;min-width:0;">
+            <div style="width:36px;height:36px;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 36, false)}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:var(--ctx-player);">GITHUB RELEASE • AUTO-UPDATE</div>
+              <div style="font-size:14px;font-weight:800;color:var(--text-1);white-space:nowrap;">Atualização disponível</div>
+            </div>
+          </div>
+          <span class="s-badge accent" style="font-size:10.5px;padding:4px 9px;font-variant-numeric:tabular-nums;">v0.4.3 → v0.5.0</span>
+        </div>
+
+        <!-- Subtítulo Bilíngue (PT-BR + EN padrão) + Metadados do APK -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <div style="font-size:11px;color:var(--text-2);line-height:1.34;">
+            Uma nova versão oficial do <b>Nuvio DeskRemote</b> está pronta para baixar e instalar.
+          </div>
+          <div class="content-cell" style="padding:5px 9px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;font-size:9.8px;">
+            <span style="color:var(--text-2);font-weight:600;">EN: <b>Update available</b> • Official release</span>
+            <span style="color:var(--status-on);font-weight:700;">APK • 14,2 MB</span>
+          </div>
+        </div>
+
+        <!-- Bloco Interno 100% Opaco de Novidades (ZERO vidro dentro de vidro) -->
+        <div class="content-card" style="padding:10px 11px;border-radius:15px;display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span class="section-title" style="margin:0;">NOVIDADES • WHAT'S NEW IN v0.5.0</span>
+            <span class="s-badge">Offrain-code</span>
+          </div>
+
+          <div style="display:flex;flex-direction:column;gap:5px;">
+            ${notes.map(n => `
+              <div class="content-cell" style="padding:6px 9px;border-radius:10px;display:flex;flex-direction:column;gap:1px;">
+                <span style="font-size:10.8px;font-weight:700;color:var(--text-1);">• ${n.pt}</span>
+                <span style="font-size:9.6px;color:var(--text-3);">EN: ${n.en}</span>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+
+        <!-- Nota de segurança e preservação de pareamento -->
+        <div style="font-size:9.8px;color:var(--text-2);text-align:center;">
+          Seus computadores pareados e ajustes locais são mantidos automaticamente.
+        </div>
+
+        <!-- Botões de Ação com Hitbox >= 48x48dp: Mais tarde / Later & Atualizar agora / Update now -->
+        <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:8px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('remote-home')">
+            <span class="vis-pill content-cell" style="width:100%;height:40px;font-size:11.5px;font-weight:700;">Mais tarde / Later</span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('update-android-states')">
+            <span class="vis-pill primary" style="width:100%;height:40px;font-size:11.5px;font-weight:700;">${ico('bolt', 14)} Atualizar agora</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderUpdateAndroidStates() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+      <!-- ESTADO 2: Progresso do Download do APK + Pronto para Instalar -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Baixando atualização" style="border-radius:22px;padding:12px 13px;display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div style="width:30px;height:30px;border-radius:9px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 30, false)}
+            </div>
+            <div>
+              <div style="font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--ctx-player);">ESTADO 2 • PROGRESSO DO DOWNLOAD</div>
+              <div style="font-size:12.5px;font-weight:800;color:var(--text-1);">Baixando atualização… / Downloading…</div>
+            </div>
+          </div>
+          <span class="s-badge accent" style="font-variant-numeric:tabular-nums;">v0.5.0</span>
+        </div>
+
+        <!-- Card Opaco de Progresso Linear (68% • 9,6 / 14,2 MB) -->
+        <div class="content-card" style="padding:9px 11px;border-radius:14px;display:flex;flex-direction:column;gap:6px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.8px;">
+            <span style="font-weight:700;color:var(--text-1);">nuvio-deskremote-v0.5.0.apk</span>
+            <span style="font-weight:800;color:var(--ctx-player);font-variant-numeric:tabular-nums;">68% • 9,6 / 14,2 MB</span>
+          </div>
+          <div style="height:6px;border-radius:999px;background:var(--content-cell);overflow:hidden;">
+            <div style="width:68%;height:100%;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#818cf8);"></div>
+          </div>
+          <div class="content-cell" style="padding:5px 8px;border-radius:9px;display:flex;align-items:center;justify-content:space-between;font-size:9.8px;">
+            <span style="color:var(--status-on);font-weight:700;">● 100%: Pronto para instalar / Ready to install</span>
+            <span style="color:var(--text-3);font-weight:600;">FileProvider APK</span>
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:8px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('update-android')">
+            <span class="vis-pill content-cell" style="width:100%;height:38px;font-size:11px;">Cancelar / Cancel</span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('remote-home')">
+            <span class="vis-pill primary" style="width:100%;height:38px;font-size:11px;">${ico('check', 14)} Instalar / Install</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ESTADO 3: Erro de Download / Conexão com Tentar Novamente e Fechar -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Erro ao baixar atualização" style="border-radius:22px;padding:12px 13px;display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div>
+            <div style="font-size:9px;font-weight:700;letter-spacing:0.05em;color:var(--status-err);">ESTADO 3 • FALHA DE REDE / ERROR STATE</div>
+            <div style="font-size:12.5px;font-weight:800;color:var(--text-1);">Falha ao baixar / Download failed</div>
+          </div>
+          <span class="s-badge" style="color:var(--status-err);border-color:rgba(248,113,113,0.4);">Erro • Retry</span>
+        </div>
+
+        <!-- Card Opaco de Erro -->
+        <div class="content-card" style="padding:9px 11px;border-radius:14px;border-color:rgba(248,113,113,0.38);display:flex;flex-direction:column;gap:4px;">
+          <div style="font-size:10.5px;font-weight:700;color:var(--status-err);">
+            Não foi possível concluir o download do pacote no GitHub Releases.
+          </div>
+          <div style="font-size:9.8px;color:var(--text-2);line-height:1.3;">
+            EN: Could not download the release package. Check your Wi-Fi connection or free storage and try again.
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:8px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('remote-home')">
+            <span class="vis-pill content-cell" style="width:100%;height:38px;font-size:11px;">Fechar / Close</span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('update-android')">
+            <span class="vis-pill primary" style="width:100%;height:38px;font-size:11px;">${ico('refresh', 14)} Tentar novamente</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderUpdateDesktopWindow() {
+  const desktopNotes = [
+    { en: 'Auto-update modal connected to Offrain-code/nuvio-deskremote', pt: 'Popup de atualização automática via GitHub Releases' },
+    { en: 'Silent/assisted Windows .exe installer with auto-restart', pt: 'Instalador .exe do Windows com reinício automático' },
+    { en: 'Preserves paired phones, LAN PIN policy and Nuvio.exe path', pt: 'Mantém celulares pareados, política LAN_ONLY e Nuvio.exe' }
+  ];
+
+  return `
+    <div class="device-frame desktop-window" id="device-frame-update-desktop">
+      <div class="app-shell" style="padding:10px 14px 12px;gap:10px;position:relative;">
+        <!-- Barra Superior Flutuante do Desktop Companion (desktop/ui/styles.css) -->
+        <div class="glass-regular elevated" style="height:52px;border-radius:15px;padding:0 10px 0 12px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+          <div style="display:flex;align-items:center;gap:10px;">
+            <div style="width:32px;height:32px;border-radius:9px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 32, false)}
+            </div>
+            <div>
+              <div style="display:flex;align-items:center;gap:7px;">
+                <span style="font-size:13px;font-weight:700;color:var(--text-1);">Nuvio DeskRemote Companion</span>
+                <span class="s-badge accent">Auto-Update Modal • EN / PT-BR</span>
+              </div>
+              <div style="font-size:10px;color:var(--text-2);margin-top:1px;">
+                GitHub Releases (Offrain-code/nuvio-deskremote) • Liquid Glass sobre scrim translúcido
+              </div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span class="s-badge" style="color:var(--status-on);">● v0.4.3 → v0.5.0</span>
+            <button class="action-btn-48" onclick="goScenario('desktop-companion')">
+              <span class="vis-pill compact content-cell" style="height:32px;padding:0 10px;">Voltar ao Companion</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Palco do Desktop Companion com os 2 Estados do Modal Liquid Glass Lado a Lado -->
+        <div style="flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;gap:12px;position:relative;">
+          <!-- COLUNA ESQUERDA: Popup Principal Desktop (Update available / Atualização disponível) -->
+          <section class="glass-regular elevated" role="dialog" aria-label="Desktop Update Available" style="border-radius:20px;padding:14px;display:flex;flex-direction:column;justify-content:space-between;gap:8px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+              <div style="display:flex;align-items:center;gap:9px;">
+                <div style="width:36px;height:36px;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                  ${renderBrandIconSvg('1', 36, false)}
+                </div>
+                <div>
+                  <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:var(--ctx-player);">ESTADO 1 • POPUP DE NOVA VERSÃO</div>
+                  <div style="font-size:13.5px;font-weight:800;color:var(--text-1);">Update available • Atualização</div>
+                </div>
+              </div>
+              <span class="s-badge accent" style="font-variant-numeric:tabular-nums;">v0.4.3 → v0.5.0</span>
+            </div>
+
+            <div style="font-size:10.5px;color:var(--text-2);line-height:1.34;">
+              <b>EN:</b> A new official Windows Companion release is ready to install.<br>
+              <b>PT-BR:</b> Uma nova versão oficial do Companion para Windows está disponível.
+            </div>
+
+            <!-- Caixa Opaca de Release Notes (var(--card-bg) / var(--cell-bg) — ZERO vidro aninhado) -->
+            <div class="content-card" style="padding:10px 11px;border-radius:14px;display:flex;flex-direction:column;gap:6px;flex:1;justify-content:space-between;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <span class="section-title" style="margin:0;">WHAT'S NEW • NOVIDADES (v0.5.0)</span>
+                <span class="s-badge" style="color:var(--status-on);">Windows .exe • 18,4 MB</span>
+              </div>
+
+              ${desktopNotes.map(item => `
+                <div class="content-cell" style="padding:6px 9px;border-radius:10px;display:flex;flex-direction:column;gap:1px;">
+                  <span style="font-size:10.5px;font-weight:700;color:var(--text-1);">• ${item.en}</span>
+                  <span style="font-size:9.5px;color:var(--text-2);">PT: ${item.pt}</span>
+                </div>
+              `).join('')}
+            </div>
+
+            <!-- Botões do Popup Desktop (>= 48px) -->
+            <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:8px;height:48px;align-items:center;">
+              <button class="action-btn-48" onclick="goScenario('desktop-companion')">
+                <span class="vis-pill content-cell" style="width:100%;height:38px;font-size:11px;font-weight:700;">Later / Mais tarde</span>
+              </button>
+              <button class="action-btn-48">
+                <span class="vis-pill primary" style="width:100%;height:38px;font-size:11px;font-weight:700;">${ico('bolt', 14)} Update now / Atualizar</span>
+              </button>
+            </div>
+          </section>
+
+          <!-- COLUNA DIREITA: Estado 2 (Baixando Instalador .exe) & Estado 3 (Erro com Retry) no Desktop -->
+          <div style="display:flex;flex-direction:column;justify-content:space-between;gap:10px;">
+            <!-- Estado 2 Desktop: Baixando Instalador .exe -->
+            <section class="glass-regular elevated" role="dialog" aria-label="Downloading Windows Installer" style="border-radius:20px;padding:13px 14px;display:flex;flex-direction:column;gap:7px;flex:1;justify-content:space-between;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:var(--ctx-player);">ESTADO 2 • DOWNLOAD DO INSTALADOR (.EXE)</div>
+                  <div style="font-size:12.5px;font-weight:800;color:var(--text-1);">Downloading update… • Baixando…</div>
+                </div>
+                <span class="s-badge accent" style="font-variant-numeric:tabular-nums;">74% • 13,6 / 18,4 MB</span>
+              </div>
+
+              <div class="content-card" style="padding:9px 11px;border-radius:13px;display:flex;flex-direction:column;gap:6px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;font-size:10.5px;">
+                  <span style="font-weight:700;color:var(--text-1);">Nuvio-DeskRemote-Setup-0.5.0.exe</span>
+                  <span style="font-weight:700;color:var(--status-on);">SHA-256 OK</span>
+                </div>
+                <div style="height:6px;border-radius:999px;background:var(--content-cell);overflow:hidden;">
+                  <div style="width:74%;height:100%;border-radius:999px;background:linear-gradient(90deg,#22d3ee,#818cf8);"></div>
+                </div>
+                <div style="font-size:9.8px;color:var(--text-2);line-height:1.3;">
+                  <b>Ready to install:</b> O Companion executará o instalador e reiniciará automaticamente.
+                </div>
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:8px;height:48px;align-items:center;">
+                <button class="action-btn-48">
+                  <span class="vis-pill content-cell" style="width:100%;height:36px;font-size:11px;">Cancel / Cancelar</span>
+                </button>
+                <button class="action-btn-48">
+                  <span class="vis-pill primary" style="width:100%;height:36px;font-size:11px;">${ico('restart', 13)} Install &amp; Restart</span>
+                </button>
+              </div>
+            </section>
+
+            <!-- Estado 3 Desktop: Falha no Download com Retry / Close -->
+            <section class="glass-regular elevated" role="dialog" aria-label="Desktop Update Error" style="border-radius:20px;padding:12px 14px;display:flex;flex-direction:column;gap:6px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;">
+                <div>
+                  <div style="font-size:9.5px;font-weight:700;letter-spacing:0.05em;color:var(--status-err);">ESTADO 3 • ERRO DE ATUALIZAÇÃO</div>
+                  <div style="font-size:12px;font-weight:800;color:var(--text-1);">Update download failed • Falha ao baixar</div>
+                </div>
+                <span class="s-badge" style="color:var(--status-err);border-color:rgba(248,113,113,0.4);">GitHub API</span>
+              </div>
+
+              <div class="content-card" style="padding:7px 10px;border-radius:12px;border-color:rgba(248,113,113,0.38);font-size:9.8px;color:var(--text-2);line-height:1.3;">
+                Could not reach GitHub Releases (<b style="color:var(--text-1);">Offrain-code/nuvio-deskremote</b>). Check internet connection and retry.
+              </div>
+
+              <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:8px;height:48px;align-items:center;">
+                <button class="action-btn-48">
+                  <span class="vis-pill content-cell" style="width:100%;height:36px;font-size:11px;">Close / Fechar</span>
+                </button>
+                <button class="action-btn-48">
+                  <span class="vis-pill primary" style="width:100%;height:36px;font-size:11px;">${ico('refresh', 13)} Retry / Tentar novamente</span>
+                </button>
+              </div>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 function renderPhoneHtml(scen, opts = {}) {
+  if (scen === 'update-desktop') {
+    return renderUpdateDesktopWindow();
+  }
   if (scen === 'desktop-companion') {
     return renderDesktopCompanionWindow('pairing');
   }
@@ -5871,7 +6211,11 @@ function renderPhoneHtml(scen, opts = {}) {
   const meta = SCENARIO_META[scen];
   const activeSheet = opts.playerSheet !== undefined ? opts.playerSheet : (meta.seg === 1 ? state.playerSheet : '');
   let innerBody = '';
-  if (scen === 'onboarding') {
+  if (scen === 'update-android') {
+    innerBody = renderUpdateAndroidAvailable();
+  } else if (scen === 'update-android-states') {
+    innerBody = renderUpdateAndroidStates();
+  } else if (scen === 'onboarding') {
     innerBody = renderOnboardingBody();
   } else if (scen === 'responsivo') {
     innerBody = renderResponsivoBody();
@@ -5921,9 +6265,30 @@ function renderPhoneHtml(scen, opts = {}) {
   `;
 }
 
-// ==================== PAINEL OVERVIEW (NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
+// ==================== PAINEL OVERVIEW (AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
 function renderOverviewHtml() {
   return `
+    <section class="overview-section" id="overviewAutoUpdateSection">
+      <div class="overview-section-head">
+        <h2>000. Nuvio DeskRemote — Popup de Atualização Automática via GitHub Releases (Offrain-code/nuvio-deskremote)</h2>
+        <span>Liquid Glass REGULAR sobre scrim • Notas internas 100% opacas • Bilíngue EN + PT-BR • Estados Disponível, Progresso e Erro • Alvos ≥ 48dp</span>
+      </div>
+      <div class="overview-row">
+        <div class="ov-item">
+          <div class="ov-label">000A. Android • Popup Atualização Disponível (v0.4.3 → v0.5.0)</div>
+          ${renderPhoneHtml('update-android')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">000B. Android • Estados Progresso APK (68% / Pronto) &amp; Erro</div>
+          ${renderPhoneHtml('update-android-states')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">000C. Windows Desktop Companion • Popup Modal Update &amp; Download .exe</div>
+          ${renderPhoneHtml('update-desktop')}
+        </div>
+      </div>
+    </section>
+
     <section class="overview-section" id="overviewDeskRemoteSection">
       <div class="overview-section-head">
         <h2>00. Nuvio DeskRemote — Companion Desktop Windows (Tauri v2), Onboarding Android, Responsividade (320dp/Fonte) &amp; Novo Ícone</h2>

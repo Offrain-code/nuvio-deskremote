@@ -63,4 +63,88 @@ class ScreenShareGestureClassifierTest {
         assertTrue(isPointInRightScrollStrip(Offset(1180f, 300f), containerWidth = 1200, stripWidthPx = 64f))
         assertFalse(isPointInRightScrollStrip(Offset(900f, 300f), containerWidth = 1200, stripWidthPx = 64f))
     }
+
+    @Test
+    fun `double tap and hold stationary engages drag at first tap anchor and releases on up`() {
+        val tracker = DoubleTapDragTracker(
+            doubleTapWindowMs = 340L,
+            holdEngageMs = 140L,
+            maxDoubleTapDistancePx = 80f,
+            engageMovePx = 16f,
+        )
+        val anchor = Offset(240f, 120f)
+        // First tap
+        assertFalse(tracker.onPointerDown(anchor, nowMs = 1000L))
+        assertFalse(tracker.onPointerUp(anchor, nowMs = 1070L))
+
+        // Second tap down near anchor within window
+        assertTrue(tracker.onPointerDown(Offset(252f, 126f), nowMs = 1200L))
+        assertEquals(DoubleTapDragPhase.ARMED, tracker.phase)
+        assertEquals(anchor, tracker.anchorPosition)
+        assertEquals(140L, tracker.remainingHoldMs(1200L))
+
+        // Stationary hold reaches 140ms -> engages drag
+        assertFalse(tracker.onHoldTimeout(1300L))
+        assertTrue(tracker.onHoldTimeout(1340L))
+        assertEquals(DoubleTapDragPhase.DRAGGING, tracker.phase)
+
+        // Lifting finger releases hold
+        assertTrue(tracker.onPointerUp(Offset(500f, 320f), nowMs = 2000L))
+        assertEquals(DoubleTapDragPhase.IDLE, tracker.phase)
+    }
+
+    @Test
+    fun `double tap with immediate drag movement engages before hold timeout`() {
+        val tracker = DoubleTapDragTracker(
+            doubleTapWindowMs = 340L,
+            holdEngageMs = 140L,
+            maxDoubleTapDistancePx = 80f,
+            engageMovePx = 16f,
+        )
+        val anchor = Offset(100f, 100f)
+        tracker.onPointerDown(anchor, nowMs = 100L)
+        tracker.onPointerUp(anchor, nowMs = 160L)
+
+        assertTrue(tracker.onPointerDown(Offset(105f, 102f), nowMs = 280L))
+        // Immediate movement of 22px engages drag right away at 300ms (< 140ms)
+        assertTrue(tracker.onPointerMove(Offset(127f, 102f), deltaPx = 22f, nowMs = 300L))
+        assertTrue(tracker.isDragging)
+        assertEquals(anchor, tracker.anchorPosition)
+        // Subsequent moves do not re-trigger mouse down
+        assertFalse(tracker.onPointerMove(Offset(200f, 150f), deltaPx = 88f, nowMs = 340L))
+        assertTrue(tracker.onPointerUp(Offset(200f, 150f), nowMs = 600L))
+    }
+
+    @Test
+    fun `fast double tap release preserves normal double click without engaging drag`() {
+        val tracker = DoubleTapDragTracker(
+            doubleTapWindowMs = 340L,
+            holdEngageMs = 140L,
+            maxDoubleTapDistancePx = 80f,
+            engageMovePx = 16f,
+        )
+        val pos = Offset(300f, 200f)
+        tracker.onPointerDown(pos, nowMs = 500L)
+        tracker.onPointerUp(pos, nowMs = 560L)
+
+        assertTrue(tracker.onPointerDown(Offset(304f, 202f), nowMs = 680L))
+        assertFalse(tracker.onPointerUp(Offset(304f, 202f), nowMs = 740L))
+        assertEquals(DoubleTapDragPhase.IDLE, tracker.phase)
+
+        // Third tap immediately after does not accidentally arm drag
+        assertFalse(tracker.onPointerDown(pos, nowMs = 820L))
+    }
+
+    @Test
+    fun `cancel mid drag signals button release and resets state`() {
+        val tracker = DoubleTapDragTracker()
+        val pos = Offset(200f, 200f)
+        tracker.onPointerDown(pos, nowMs = 100L)
+        tracker.onPointerUp(pos, nowMs = 150L)
+        tracker.onPointerDown(pos, nowMs = 260L)
+        assertTrue(tracker.onHoldTimeout(400L))
+        assertTrue(tracker.onCancel())
+        assertEquals(DoubleTapDragPhase.IDLE, tracker.phase)
+        assertFalse(tracker.onCancel())
+    }
 }

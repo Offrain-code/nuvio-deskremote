@@ -61,6 +61,16 @@ class AppPrefs(context: Context) {
             ?: DEFAULT_TUNNEL
         set(v) = sp.edit().putString(K_TUNNEL, v.trim()).apply()
 
+    /** Version tag dismissed via "Later" in the automatic update dialog. */
+    var dismissedUpdateVersion: String
+        get() = sp.getString(K_DISMISSED_UPDATE_VER, "")?.trim().orEmpty()
+        set(v) = sp.edit().putString(K_DISMISSED_UPDATE_VER, v.trim()).apply()
+
+    /** Epoch timestamp (ms) when the user last dismissed the update prompt. */
+    var dismissedUpdateAtMs: Long
+        get() = sp.getLong(K_DISMISSED_UPDATE_AT, 0L)
+        set(v) = sp.edit().putLong(K_DISMISSED_UPDATE_AT, v).apply()
+
     fun savedWakeInfo(): NuvioWakeInfo? {
         val macs = sp.getString(K_WAKE_MACS, "")
             .orEmpty()
@@ -98,5 +108,7 @@ class AppPrefs(context: Context) {
         const val K_LAN_HOST = "saved_lan_host"
         const val K_WAKE_MACS = "wake_macs"
         const val K_WAKE_BROADCASTS = "wake_broadcasts"
+        const val K_DISMISSED_UPDATE_VER = "dismissed_update_version"
+        const val K_DISMISSED_UPDATE_AT = "dismissed_update_at_ms"
     }
 }

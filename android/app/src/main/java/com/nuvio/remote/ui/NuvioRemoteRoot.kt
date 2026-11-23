@@ -40,6 +40,7 @@ import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,6 +76,7 @@ import com.nuvio.remote.connection.pushNuvioRoute
 import com.nuvio.remote.data.AppPrefs
 import com.nuvio.remote.discovery.PcService
 import com.nuvio.remote.pairing.PairingManager
+import com.nuvio.remote.ui.components.AutoUpdateDialog
 import com.nuvio.remote.ui.components.Haptics
 import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
@@ -102,6 +104,8 @@ import com.nuvio.remote.ui.theme.NuvioTypography
 import com.nuvio.remote.ui.theme.accentForScreen
 import com.nuvio.remote.ui.theme.nuvioGlass
 import com.nuvio.remote.ui.theme.rememberGlassBackdropState
+import com.nuvio.remote.update.AppUpdateController
+import com.nuvio.remote.update.ManualUpdateCheckStatus
 import com.nuvio.remote.webrtc.ScreenStreamController
 
 /**
@@ -128,7 +132,19 @@ fun NuvioRemoteRoot(
 ) {
     val context = LocalContext.current
     val appPrefs = remember(context) { AppPrefs(context) }
+    val updateController = remember(context, appPrefs) {
+        AppUpdateController(context.applicationContext, appPrefs)
+    }
+    val updateUiState by updateController.uiState.collectAsState()
+    val manualUpdateStatus by updateController.manualCheckStatus.collectAsState()
     val backdropState = rememberGlassBackdropState()
+
+    DisposableEffect(updateController) {
+        onDispose { updateController.dispose() }
+    }
+    LaunchedEffect(updateController) {
+        updateController.checkForUpdates(manual = false)
+    }
     val connState by conn.connState.collectAsState()
     val serverState by conn.serverState.collectAsState()
     val lastError by conn.lastError.collectAsState()
@@ -280,6 +296,9 @@ fun NuvioRemoteRoot(
                                 onImmersiveChange = { isScreenImmersive = it },
                                 onOpenCinemaMode = { isCinemaMode = true },
                                 onNavigateTab = ::navigateToTab,
+                                installedVersion = updateController.installedVersion,
+                                manualUpdateStatus = manualUpdateStatus,
+                                onCheckForUpdates = { updateController.checkForUpdates(manual = true) },
                             )
                         }
 
@@ -296,6 +315,16 @@ fun NuvioRemoteRoot(
                         )
                     }
                 }
+
+                AutoUpdateDialog(
+                    state = updateUiState,
+                    onUpdateNow = { updateController.startDownload() },
+                    onLater = { updateController.dismissLater() },
+                    onCancelDownload = { updateController.cancelDownload() },
+                    onInstallNow = { updateController.installReadyApk() },
+                    onRetry = { updateController.retry() },
+                    onCloseError = { updateController.closeModal() },
+                )
             }
         }
     }
@@ -364,6 +393,9 @@ private fun NuvioRouteHost(
     onImmersiveChange: (Boolean) -> Unit,
     onOpenCinemaMode: () -> Unit,
     onNavigateTab: (NuvioTab) -> Unit,
+    installedVersion: String,
+    manualUpdateStatus: ManualUpdateCheckStatus,
+    onCheckForUpdates: () -> Unit,
 ) {
     Box(modifier = Modifier.fillMaxSize()) {
         when (route) {
@@ -426,6 +458,9 @@ private fun NuvioRouteHost(
                     onDefaultProfileChange = onDefaultProfileChange,
                     discovered = discovered,
                     onRefreshDiscovery = onRefreshDiscovery,
+                    installedVersion = installedVersion,
+                    manualUpdateStatus = manualUpdateStatus,
+                    onCheckForUpdates = onCheckForUpdates,
                 )
             }
         }

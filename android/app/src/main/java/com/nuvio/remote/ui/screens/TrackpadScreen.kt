@@ -1,5 +1,6 @@
 package com.nuvio.remote.ui.screens
 
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
@@ -110,11 +111,12 @@ fun TrackpadScreen(
     }
     var keyboardVisible by remember { mutableStateOf(false) }
     var dragLocked by remember { mutableStateOf(false) }
+    var gestureDragActive by remember { mutableStateOf(false) }
     var sensitivityExpanded by rememberSaveable { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose {
-            if (dragLocked) {
+            if (dragLocked || gestureDragActive) {
                 conn.sendMouseHold(MouseButtons.LEFT, false)
             }
         }
@@ -151,7 +153,7 @@ fun TrackpadScreen(
             ) {
                 TrackpadTouchSurface(
                     sensitivity = sensitivity,
-                    dragLocked = dragLocked,
+                    dragLocked = dragLocked || gestureDragActive,
                     onMove = { dx, dy -> conn.sendMouseMove(dx, dy) },
                     onTap = {
                         if (hapticsEnabled) Haptics.action(context)
@@ -160,6 +162,13 @@ fun TrackpadScreen(
                     onTwoFingerTap = {
                         if (hapticsEnabled) Haptics.action(context)
                         conn.sendMouseClick(MouseButtons.RIGHT)
+                    },
+                    onGestureDragChange = { active ->
+                        gestureDragActive = active
+                        conn.sendMouseHold(MouseButtons.LEFT, active)
+                        if (hapticsEnabled) {
+                            if (active) Haptics.toggle(context) else Haptics.action(context)
+                        }
                     },
                     onScroll = { delta ->
                         if (hapticsEnabled) Haptics.scroll(context)
@@ -433,10 +442,19 @@ private fun TrackpadTouchSurface(
     onMove: (Int, Int) -> Unit,
     onTap: () -> Unit,
     onTwoFingerTap: () -> Unit,
+    onGestureDragChange: (Boolean) -> Unit,
     onScroll: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val scheme = LocalNuvioColors.current
+    val density = LocalDensity.current
+    val doubleTapTracker = remember(density) {
+        DoubleTapDragTracker(
+            maxDoubleTapDistancePx = with(density) { 48.dp.toPx() },
+            engageMovePx = with(density) { 8.dp.toPx() },
+            maxTapMovePx = with(density) { 12.dp.toPx() },
+        )
+    }
 
     Box(
         modifier = modifier
@@ -451,9 +469,11 @@ private fun TrackpadTouchSurface(
             )
             .trackpadGestures(
                 sensitivity = sensitivity,
+                tracker = doubleTapTracker,
                 onMove = onMove,
                 onTap = onTap,
                 onTwoFingerTap = onTwoFingerTap,
+                onGestureDragChange = onGestureDragChange,
                 onScroll = onScroll,
             ),
     ) {
@@ -838,45 +858,137 @@ private fun TrackpadSensitivityCard(
 
 private fun Modifier.trackpadGestures(
     sensitivity: Float,
+    tracker: DoubleTapDragTracker,
     onMove: (Int, Int) -> Unit,
     onTap: () -> Unit,
     onTwoFingerTap: () -> Unit,
+    onGestureDragChange: (Boolean) -> Unit,
     onScroll: (Int) -> Unit,
 ): Modifier = this
-    .pointerInput(onTap) {
-        detectTapGestures(
-            onTap = { onTap() },
-        )
-    }
-    .pointerInput(sensitivity, onMove, onTwoFingerTap, onScroll) {
+    .pointerInput(sensitivity, tracker, onMove, onTwoFingerTap, onGestureDragChange, onScroll) {
         val state = TrackpadMotionAccumulator()
         awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false)
-            var maxPointers = 1
-            var twoFingerMoved = false
-            while (true) {
-                val event = awaitPointerEvent()
-                val activePointers = event.changes.count { it.pressed }
-                if (activePointers > maxPointers) maxPointers = activePointers
-                if (activePointers == 0) {
-                    if (maxPointers >= 2 && !twoFingerMoved) onTwoFingerTap()
-                    break
+            val firstDown = awaitFirstDown(requireUnconsumed = false)
+            tracker.onPointerDown(firstDown.position, SystemClock.elapsedRealtime())
+            val session = TrackpadGestureSession(lastPos = firstDown.position)
+            try {
+                var active = true
+                while (active) {
+                    val event = awaitTrackpadEventWithHoldTimeout(tracker, session) {
+                        onGestureDragChange(true)
+                    }
+                    if (event != null) {
+                        active = state.processEvent(
+                            event = event,
+                            session = session,
+                            sensitivity = sensitivity,
+                            tracker = tracker,
+                            onMove = onMove,
+                            onTwoFingerTap = onTwoFingerTap,
+                            onGestureDragChange = onGestureDragChange,
+                            onScroll = onScroll,
+                        )
+                    }
                 }
-                val pan = event.calculatePan()
-                if (activePointers >= 2) {
-                    twoFingerMoved = state.dispatchTwoFinger(pan, twoFingerMoved, onScroll)
-                } else if (pan != Offset.Zero) {
-                    state.dispatchSingleFinger(pan, sensitivity, onMove)
+            } finally {
+                if (!session.finishedNormally && tracker.onCancel()) {
+                    onGestureDragChange(false)
                 }
-                event.changes.forEach { if (it.positionChanged()) it.consume() }
             }
         }
     }
+    .pointerInput(onTap, tracker) {
+        detectTapGestures(
+            onTap = {
+                if (!tracker.isDragging) onTap()
+            },
+        )
+    }
+
+private suspend fun androidx.compose.ui.input.pointer.AwaitPointerEventScope.awaitTrackpadEventWithHoldTimeout(
+    tracker: DoubleTapDragTracker,
+    session: TrackpadGestureSession,
+    onDragEngaged: () -> Unit,
+): androidx.compose.ui.input.pointer.PointerEvent? {
+    if (session.maxPointers != 1 || !tracker.isArmed) return awaitPointerEvent()
+    val waitMs = tracker.remainingHoldMs(SystemClock.elapsedRealtime())
+    val awaited = withTimeoutOrNull(waitMs) { awaitPointerEvent() }
+    if (awaited == null && tracker.onHoldTimeout(SystemClock.elapsedRealtime())) {
+        onDragEngaged()
+    }
+    return awaited
+}
+
+private class TrackpadGestureSession(
+    var lastPos: Offset,
+    var maxPointers: Int = 1,
+    var twoFingerMoved: Boolean = false,
+    var finishedNormally: Boolean = false,
+)
 
 private class TrackpadMotionAccumulator {
     private var accX = 0f
     private var accY = 0f
     private var scrollAcc = 0f
+
+    fun processEvent(
+        event: androidx.compose.ui.input.pointer.PointerEvent,
+        session: TrackpadGestureSession,
+        sensitivity: Float,
+        tracker: DoubleTapDragTracker,
+        onMove: (Int, Int) -> Unit,
+        onTwoFingerTap: () -> Unit,
+        onGestureDragChange: (Boolean) -> Unit,
+        onScroll: (Int) -> Unit,
+    ): Boolean {
+        val activePointers = event.changes.count { it.pressed }
+        if (activePointers > session.maxPointers) session.maxPointers = activePointers
+        if (activePointers == 0) {
+            finishTrackpadGesture(event, session, tracker, onTwoFingerTap, onGestureDragChange)
+            return false
+        }
+        val pan = event.calculatePan()
+        if (activePointers >= 2) {
+            if (tracker.onCancel()) onGestureDragChange(false)
+            session.twoFingerMoved = dispatchTwoFinger(pan, session.twoFingerMoved, onScroll)
+        } else {
+            val primary = event.changes.first { it.pressed }
+            session.lastPos = primary.position
+            if (pan != Offset.Zero) {
+                val engaged = tracker.onPointerMove(
+                    primary.position,
+                    pan.getDistance(),
+                    SystemClock.elapsedRealtime(),
+                )
+                if (engaged) onGestureDragChange(true)
+                dispatchSingleFinger(pan, sensitivity, onMove)
+            }
+        }
+        event.changes.forEach {
+            if (it.positionChanged() || tracker.isDragging) it.consume()
+        }
+        return true
+    }
+
+    private fun finishTrackpadGesture(
+        event: androidx.compose.ui.input.pointer.PointerEvent,
+        session: TrackpadGestureSession,
+        tracker: DoubleTapDragTracker,
+        onTwoFingerTap: () -> Unit,
+        onGestureDragChange: (Boolean) -> Unit,
+    ) {
+        session.finishedNormally = true
+        if (session.maxPointers >= 2) {
+            if (tracker.onCancel()) onGestureDragChange(false)
+            if (!session.twoFingerMoved) onTwoFingerTap()
+            return
+        }
+        val upPos = event.changes.firstOrNull()?.position ?: session.lastPos
+        if (tracker.onPointerUp(upPos, SystemClock.elapsedRealtime())) {
+            event.changes.forEach { it.consume() }
+            onGestureDragChange(false)
+        }
+    }
 
     fun dispatchTwoFinger(pan: Offset, alreadyMoved: Boolean, onScroll: (Int) -> Unit): Boolean {
         val moved = alreadyMoved || abs(pan.x) > 1f || abs(pan.y) > 1f

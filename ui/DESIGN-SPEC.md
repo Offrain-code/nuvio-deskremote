@@ -586,6 +586,53 @@ Partindo diretamente da assinatura visual oficial do **Nuvio** — o **triângul
 
 ---
 
+### 5.11 Popup de Atualização Automática via GitHub Releases (`Offrain-code/nuvio-deskremote`)
+
+O aplicativo Android e o Windows Desktop Companion verificam periodicamente a última release pública em `https://api.github.com/repos/Offrain-code/nuvio-deskremote/releases/latest`. Quando `latestTag > currentVersion`, exibe-se o **Popup Modal de Atualização Automática (`AutoUpdateDialog` / `UpdateModal`)**.
+
+#### 5.11.1 Arquitetura Visual e Regra de Camada Liquid Glass (Android & Desktop)
+
+| Elemento | Superfície / Token (`Android` & `Desktop`) | Medidas e Regras de Camada |
+| :--- | :--- | :--- |
+| **Scrim de Fundo (`BackdropScrim`)** | Escuro: `rgba(5, 7, 11, 0.58)` (`Color(0x9405070B)`) · Claro: `rgba(15, 23, 42, 0.42)` (`Color(0x6B0F172A)`) | Ocupa `fillMaxSize()`, bloqueia cliques de fundo; toque no scrim no estado `AVAILABLE` equivale a `Mais tarde / Later` (bloqueado durante `DOWNLOADING`). |
+| **Container Externo do Modal (`UpdateModalGlass`)** | **`GlassVariant.REGULAR` (`elevated = true`)** · Android: `Modifier.nuvioGlass(RoundedCornerShape(24.dp), GlassVariant.REGULAR, elevated = true)` · Desktop: `background: var(--glass-bg); backdrop-filter: blur(22px) saturate(160%); border: 1px solid var(--glass-border)` | **Única camada com vidro.** Android: `width = 328.dp` (`fillMaxWidth()` com `paddingHorizontal = 16.dp`), `padding = 16.dp`, `RoundedCornerShape(24.dp)`. Desktop: `width = 436px`, `padding = 18px`, `border-radius = 22px`. |
+| **Pílula de Versão (`VersionDeltaBadge`)** | Superfície opaca `ContentCellSurface` (`#191D28` escuro / `#F3F6FB` claro) com borda `ctxPlayer` (`#C4B5FD` / `#6D28D9`) ou `.chip-accent` | Exibe **`v0.4.3 → v0.5.0`** (`11.sp` Bold, `tabular-nums`) + badge auxiliar de pacote (`14,2 MB • APK` no Android / `18,4 MB • .exe` no Windows). **Zero vidro aninhado.** |
+| **Bloco de Novidades (`ReleaseNotesOpaqueBox`)** | Superfície 100% opaca `ContentCardSurface` / `ContentCellSurface` (`#13161E` / `#FFFFFF`, borda `ContentBorder` `1.dp`, `RoundedCornerShape(14.dp)`) | **Proibido aplicar vidro dentro do modal.** Altura máxima `144.dp` (com `verticalScroll` se a nota for extensa), `padding = 10.dp 12.dp`, texto `11.5.sp` (`TextSecondary` e destaques em `TextPrimary`, contraste `>= 7:1`). |
+| **Bloco de Progresso (`UpdateProgressOpaqueBox`)** | Superfície 100% opaca `ContentCellSurface` (`RoundedCornerShape(14.dp)`, `padding = 10.dp 12.dp`) | Trilha da barra `6.dp` de altura em `ContentCardSurface`; preenchimento em gradiente Nuvio (`#22D3EE -> #818CF8`); contador tabular (`68% • 9,6 / 14,2 MB`). |
+| **Botões de Ação (`UpdateNow` / `Later` / `Retry`)** | Primário: `pillActiveBgTop -> pillActiveBgBottom` com texto `pillActiveFg` · Secundário: `ContentCellSurface` opaca com borda `ContentBorder` e texto `TextPrimary` | **Hitbox obrigatório `>= 48.dp × 48.dp`** (altura visual da pílula `38.dp–40.dp` centralizada em wrapper `48.dp`), `gap = 8.dp`, `12.5.sp` SemiBold, zero truncamento. |
+
+#### 5.11.2 Textos Bilíngues Padronizados (`EN` Padrão + `PT-BR` via `l10n`)
+
+| Chave / Elemento | Inglês (`EN` — Padrão) | Português (`PT-BR`) |
+| :--- | :--- | :--- |
+| **Kicker de Origem** | `GITHUB RELEASE • AUTO-UPDATE` | `GITHUB RELEASE • ATUALIZAÇÃO` |
+| **Título (`AVAILABLE`)** | `Update available` | `Atualização disponível` |
+| **Subtítulo (`AVAILABLE`)** | `A new version of Nuvio DeskRemote is ready to install.` | `Uma nova versão do Nuvio DeskRemote está pronta para instalar.` |
+| **Cabeçalho das Notas** | `WHAT'S NEW IN v0.5.0` | `NOVIDADES DA VERSÃO v0.5.0` |
+| **Botão Primário (`AVAILABLE`)** | `Update now` | `Atualizar agora` |
+| **Botão Secundário (`AVAILABLE`)** | `Later` | `Mais tarde` |
+| **Status (`DOWNLOADING` Android)** | `Downloading APK update…` | `Baixando atualização do app…` |
+| **Status (`DOWNLOADING` Desktop)** | `Downloading Windows installer (.exe)…` | `Baixando instalador do Windows (.exe)…` |
+| **Status (`READY_TO_INSTALL`)** | `Ready to install • Tap below to confirm` | `Pronto para instalar • Toque abaixo para concluir` |
+| **Botão (`READY_TO_INSTALL`)** | `Install update` | `Instalar agora` |
+| **Título (`ERROR`)** | `Update download failed` | `Falha ao baixar atualização` |
+| **Mensagem (`ERROR`)** | `Could not download the package from GitHub Releases. Check your connection and try again.` | `Não foi possível baixar o pacote do GitHub Releases. Verifique sua conexão e tente novamente.` |
+| **Botões (`ERROR`)** | `Retry` (primário) / `Close` (secundário) | `Tentar novamente` (primário) / `Fechar` (secundário) |
+
+#### 5.11.3 Fluxo dos 3 Estados e Movimento (`NuvioMotion`)
+1. **Estado 1 — `Disponível` (`UpdateState.AVAILABLE`):**
+   - Exibe cabeçalho com ícone do **Nuvio DeskRemote**, badge `v0.4.3 → v0.5.0`, título, subtítulo, caixa opaca de novidades da release e linha inferior com **`Mais tarde / Later`** (`weight(1f)`, `minHeight = 48.dp`) e **`Atualizar agora / Update now`** (`weight(1.25f)`, `minHeight = 48.dp`).
+2. **Estado 2 — `Baixando / Pronto para Instalar` (`UpdateState.DOWNLOADING` / `READY_TO_INSTALL`):**
+   - Ao tocar em `Atualizar agora / Update now`, o modal faz transição suave (`morphEnter`) na faixa inferior para o bloco opaco de progresso:
+     - Exibe percentual e tamanho transferido (`68% • 9,6 / 14,2 MB` no Android; `74% • 13,6 / 18,4 MB` no Desktop), barra de progresso `6.dp` e botão **`Cancelar / Cancel`** (`>= 48.dp`).
+     - Ao atingir `100%`, no Android exibe **`Pronto para instalar / Ready to install`** com botão primário **`Instalar agora / Install update`** (abre o instalador nativo via `FileProvider`); no Windows Desktop Companion inicia o instalador `.exe` silencioso/assistido e reinicia o Companion.
+3. **Estado 3 — `Erro` (`UpdateState.ERROR`):**
+   - Caso a rede caia ou o checksum/download falhe, exibe bloco opaco com borda `StatusError` (`#F87171` escuro / `#DC2626` claro), explicação curta e botões **`Fechar / Close`** e **`Tentar novamente / Retry`** (`>= 48.dp`).
+4. **Movimento e Acessibilidade:**
+   - Entrada e saída do popup usam exclusivamente `NuvioMotion.morphEnter(reducedMotion)` e `NuvioMotion.morphExit(reducedMotion)` (`scale 0.98f -> 1f` + `fade`, `300ms` entrada / `260ms` saída, física `spring`, somente GPU `transform`/`opacity` a `60fps`). Quando `LocalReducedMotion` (ou `prefers-reduced-motion: reduce` no Desktop) estiver ativo, a transição é instantânea (`snap`).
+
+---
+
 ## 6. Matriz de Verificação Rápida para Implementação
 
 | Critério | Meta Obrigatória | Como Validar no Código / Tela |
@@ -609,7 +656,14 @@ Partindo diretamente da assinatura visual oficial do **Nuvio** — o **triângul
    - Simulador de **API Android (`API 33+`, `API 31–32`, `API < 31`)**;
    - Alternador de **Redução de Movimento** (`?rm=1` e `@media (prefers-reduced-motion: reduce)`).
 3. **PNGs renderizados diretamente do mockup atualizado (`ui/mockups/`):**
-   - `mockups/mockup-deskremote-overview.png` (Painel geral das entregas do **Nuvio DeskRemote**: Janela Desktop Windows nos 2 estados + Onboarding Android + Responsividade `RemoteScreen`/`TrackpadScreen`)
+   - **Atualização Automática via GitHub Releases (`Offrain-code/nuvio-deskremote` — Android & Desktop):**
+     - `mockups/mockup-update-overview.png` (Painel geral comparativo do **Popup de Atualização Automática** no Android Escuro/Claro, Estados de Download/Erro e Windows Desktop Companion)
+     - `mockups/mockup-update-android-available.png` (App Android em Tema Escuro com o modal Liquid Glass `REGULAR` **"Atualização disponível / Update available"** `v0.4.3 → v0.5.0`, bloco opaco de novidades e botões `Mais tarde` / `Atualizar agora` `>= 48dp`)
+     - `mockups/mockup-update-android-states.png` (App Android com os estados de **Progresso do Download do APK (`68% • 9,6 / 14,2 MB` + `Pronto para instalar`)** e **Estado de Erro (`Tentar novamente` / `Fechar`)**)
+     - `mockups/mockup-update-android-light.png` (App Android em **Tema Claro** com o modal de atualização, validando legibilidade e contraste AA/AAA)
+     - `mockups/mockup-update-desktop-companion.png` (Janela **Nuvio DeskRemote Companion** no Windows com o modal Liquid Glass de atualização `v0.4.3 → v0.5.0` bilíngue EN/PT-BR + barra de download do instalador `.exe`)
+   - **Companion Desktop Windows, Onboarding Android & Responsividade:**
+     - `mockups/mockup-deskremote-overview.png` (Painel geral das entregas do **Nuvio DeskRemote**: Janela Desktop Windows nos 2 estados + Onboarding Android + Responsividade `RemoteScreen`/`TrackpadScreen`)
    - `mockups/mockup-deskremote-companion-pairing.png` (Janela Desktop Nativa Windows **Nuvio DeskRemote Companion** com Pareamento QR Code + PIN de 6 dígitos em destaque `120s`, Status Companion `8787` + Ponte Nuvio `47321` + IP Wi-Fi, Dispositivos Pareados com botão `Revogar` e Controles do PC com `Acesso Remoto` desligado por padrão)
    - `mockups/mockup-deskremote-companion-remote-tray.png` (Janela Desktop Nativa Windows **Nuvio DeskRemote Companion** com `Acesso Remoto (fora de casa)` ligado exibindo URL Cloudflare + aviso `LAN_ONLY`, aviso amigável da Ponte Nuvio `47321` e **Menu de Contexto da Bandeja do Sistema / Tray**)
    - `mockups/mockup-deskremote-onboarding.png` e `mockups/mockup-deskremote-onboarding-light.png` (Tela de **Primeiro Acesso / Onboarding Android** em claro e escuro, sem IP fixo: Descoberta automática Wi-Fi UDP com botão 1 toque `Conectar`, botão de destaque `Escanear QR Code do PC` e fallback discreto `Digitar endereço IP manualmente`)

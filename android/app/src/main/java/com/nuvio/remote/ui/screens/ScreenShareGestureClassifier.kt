@@ -105,3 +105,120 @@ internal fun isPointInRightScrollStrip(pos: Offset, containerWidth: Int, stripWi
     if (containerWidth <= 1 || stripWidthPx <= 0f) return false
     return pos.x >= containerWidth - stripWidthPx
 }
+
+internal enum class DoubleTapDragPhase {
+    IDLE,
+    ARMED,
+    DRAGGING,
+}
+
+/**
+ * Tracks the double-tap-and-hold drag gesture (tap 1 -> quick tap 2 kept pressed -> drag -> release).
+ * Preserves 0ms single-tap dispatch and native double-click when the second tap releases quickly,
+ * and engages left-button hold as soon as the second tap either moves past [engageMovePx] or stays
+ * pressed for [holdEngageMs].
+ */
+internal class DoubleTapDragTracker(
+    private val doubleTapWindowMs: Long = DEFAULT_DOUBLE_TAP_WINDOW_MS,
+    private val holdEngageMs: Long = DEFAULT_HOLD_ENGAGE_MS,
+    private val maxDoubleTapDistancePx: Float = 96f,
+    private val engageMovePx: Float = 16f,
+    private val maxTapDurationMs: Long = DEFAULT_MAX_TAP_DURATION_MS,
+    private val maxTapMovePx: Float = 24f,
+) {
+    var phase: DoubleTapDragPhase = DoubleTapDragPhase.IDLE
+        private set
+
+    var anchorPosition: Offset = Offset.Zero
+        private set
+
+    private var lastTapUpMs: Long = 0L
+    private var lastTapPos: Offset = Offset.Zero
+    private var pressStartMs: Long = 0L
+    private var pressStartPos: Offset = Offset.Zero
+    private var pressMovedPx: Float = 0f
+
+    val isArmed: Boolean
+        get() = phase == DoubleTapDragPhase.ARMED
+
+    val isDragging: Boolean
+        get() = phase == DoubleTapDragPhase.DRAGGING
+
+    fun onPointerDown(pos: Offset, nowMs: Long): Boolean {
+        pressStartMs = nowMs
+        pressStartPos = pos
+        pressMovedPx = 0f
+        val withinWindow = lastTapUpMs > 0L && (nowMs - lastTapUpMs) in 0L..doubleTapWindowMs
+        val nearLastTap = (pos - lastTapPos).getDistance() <= maxDoubleTapDistancePx
+        return if (withinWindow && nearLastTap) {
+            phase = DoubleTapDragPhase.ARMED
+            anchorPosition = lastTapPos
+            true
+        } else {
+            phase = DoubleTapDragPhase.IDLE
+            anchorPosition = pos
+            false
+        }
+    }
+
+    fun remainingHoldMs(nowMs: Long): Long {
+        if (phase != DoubleTapDragPhase.ARMED) return 0L
+        return (holdEngageMs - (nowMs - pressStartMs)).coerceAtLeast(0L)
+    }
+
+    fun onPointerMove(pos: Offset, deltaPx: Float, nowMs: Long): Boolean {
+        pressMovedPx += deltaPx
+        if (phase != DoubleTapDragPhase.ARMED) return false
+        val distFromDown = (pos - pressStartPos).getDistance()
+        val elapsed = nowMs - pressStartMs
+        if (distFromDown >= engageMovePx || pressMovedPx >= engageMovePx || elapsed >= holdEngageMs) {
+            phase = DoubleTapDragPhase.DRAGGING
+            lastTapUpMs = 0L
+            return true
+        }
+        return false
+    }
+
+    fun onHoldTimeout(nowMs: Long): Boolean {
+        if (phase != DoubleTapDragPhase.ARMED) return false
+        if (nowMs - pressStartMs < holdEngageMs) return false
+        phase = DoubleTapDragPhase.DRAGGING
+        lastTapUpMs = 0L
+        return true
+    }
+
+    fun onPointerUp(pos: Offset, nowMs: Long): Boolean {
+        val wasDragging = phase == DoubleTapDragPhase.DRAGGING
+        val wasArmed = phase == DoubleTapDragPhase.ARMED
+        phase = DoubleTapDragPhase.IDLE
+
+        if (wasDragging) {
+            lastTapUpMs = 0L
+            return true
+        }
+
+        val duration = nowMs - pressStartMs
+        val dist = (pos - pressStartPos).getDistance()
+        val isCleanTap = duration in 0L..maxTapDurationMs && pressMovedPx <= maxTapMovePx && dist <= maxTapMovePx
+        if (isCleanTap && !wasArmed) {
+            lastTapUpMs = nowMs
+            lastTapPos = pos
+        } else {
+            lastTapUpMs = 0L
+        }
+        return false
+    }
+
+    fun onCancel(): Boolean {
+        val wasDragging = phase == DoubleTapDragPhase.DRAGGING
+        phase = DoubleTapDragPhase.IDLE
+        lastTapUpMs = 0L
+        return wasDragging
+    }
+
+    companion object {
+        const val DEFAULT_DOUBLE_TAP_WINDOW_MS = 340L
+        const val DEFAULT_HOLD_ENGAGE_MS = 140L
+        const val DEFAULT_MAX_TAP_DURATION_MS = 260L
+    }
+}

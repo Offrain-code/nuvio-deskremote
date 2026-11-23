@@ -59,16 +59,16 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $PSNativeCommandUseErrorActionPreference = $false
-          $output = & cargo check --message-format=short 2>&1 | ForEach-Object { "$_" }
+          $output = & cargo check --color never --message-format=short 2>&1 | ForEach-Object { "$_" }
           $code = $LASTEXITCODE
           $output | ForEach-Object { Write-Host $_ }
           if ($code -ne 0) {
             $nonEmpty = @($output | Where-Object { $_.Trim().Length -gt 0 })
-            $tail = @($nonEmpty | Select-Object -Last 12)
-            $matched = @($nonEmpty | Where-Object { $_ -match '(^|:\s*)error(\[E\d+\])?:' } | Select-Object -First 8)
-            $diag = @($matched + $tail | Select-Object -Unique -First 15)
-            foreach ($line in $diag) {
-              Write-Host "::error::$line"
+            $tail = @($nonEmpty | Select-Object -Last 28)
+            for ($i = 0; $i -lt $tail.Count; $i += 4) {
+              $end = [Math]::Min($i + 3, $tail.Count - 1)
+              $chunk = ($tail[$i..$end] -join ' | ')
+              Write-Host "::error::$chunk"
             }
             exit $code
           }

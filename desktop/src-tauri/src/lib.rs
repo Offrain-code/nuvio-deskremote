@@ -16,9 +16,28 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 struct CompanionProcess(Mutex<Option<Child>>);
 
+#[cfg(target_os = "windows")]
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    if let Some(raw) = path.to_str() {
+        if let Some(stripped) = raw.strip_prefix(r"\\?\UNC\") {
+            return PathBuf::from(format!(r"\\{}", stripped));
+        }
+        if let Some(stripped) = raw.strip_prefix(r"\\?\") {
+            return PathBuf::from(stripped);
+        }
+    }
+    path
+}
+
+#[cfg(not(target_os = "windows"))]
+fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
+    path
+}
+
 fn resolve_server_paths(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
     // 1. Installed mode: bundled resources next to the executable (resources/server/)
-    if let Ok(res_dir) = app.path().resource_dir() {
+    if let Ok(raw_res_dir) = app.path().resource_dir() {
+        let res_dir = strip_verbatim_prefix(raw_res_dir);
         let srv_dir = res_dir.join("resources").join("server");
         let entry = srv_dir.join("dist").join("index.js");
         if entry.exists() {
@@ -33,7 +52,8 @@ fn resolve_server_paths(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> 
     }
 
     // 2. Development mode: ../server/dist/index.js relative to the repository root
-    if let Ok(cwd) = std::env::current_dir() {
+    if let Ok(raw_cwd) = std::env::current_dir() {
+        let cwd = strip_verbatim_prefix(raw_cwd);
         for ancestor in cwd.ancestors().take(4) {
             let srv_dir = ancestor.join("server");
             let entry = srv_dir.join("dist").join("index.js");

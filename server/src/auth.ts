@@ -13,6 +13,8 @@ export interface PairedDevice {
   lastIp: string;
 }
 
+export type PublicPairedDevice = Omit<PairedDevice, 'tokenHash'>;
+
 export interface PinValidationResult {
   ok: boolean;
   error?: 'INVALID_PIN' | 'RATE_LIMIT_EXCEEDED' | 'EXPIRED_OR_NO_PIN';
@@ -21,36 +23,119 @@ export interface PinValidationResult {
   retryAfterSeconds?: number;
 }
 
+export interface PinRequestResult {
+  ok: boolean;
+  pin?: string;
+  expiresInSeconds?: number;
+  reused?: boolean;
+  error?: 'RATE_LIMIT_EXCEEDED';
+  message?: string;
+  retryAfterSeconds?: number;
+}
+
 interface IpRateLimit {
   attempts: number;
   blockedUntil: number;
+  lastActivityAt: number;
 }
+
+interface PinRequestRateLimit {
+  count: number;
+  windowStart: number;
+}
+
+const PIN_TTL_MS = 120_000;
+const PIN_LOCKOUT_MS = 300_000;
+const PIN_REQUEST_WINDOW_MS = 60_000;
+const PIN_REQUEST_MAX_PER_WINDOW = 3;
+const PIN_POPUP_COOLDOWN_MS = 10_000;
+const IP_LIMIT_IDLE_TTL_MS = 30 * 60_000;
 
 /**
  * Temporary 6-digit pairing PIN manager (SECURITY.md §3).
  * - TTL: 120 seconds
  * - 3 incorrect attempts block the client IP for 300 seconds and immediately invalidate the PIN
+ * - Per-IP and global popup throttling prevent LAN DoS via /api/v1/pair/request
  * - Timing-safe comparison via crypto.timingSafeEqual
  */
 export class PinManager {
   private currentPin: string | null = null;
   private pinExpiresAt = 0;
+  private lastPopupAt = 0;
   private ipLimits: Map<string, IpRateLimit> = new Map();
+  private requestLimits: Map<string, PinRequestRateLimit> = new Map();
 
   /** Generates a cryptographically random 6-digit PIN and optionally shows a Windows desktop dialog. */
   generatePin(silent = false): { pin: string; expiresInSeconds: number } {
     const pin = crypto.randomInt(100000, 1000000).toString();
+    const now = Date.now();
     this.currentPin = pin;
-    this.pinExpiresAt = Date.now() + 120_000;
+    this.pinExpiresAt = now + PIN_TTL_MS;
 
     info('[AUTH] Generated new pairing PIN (valid for 120 seconds)');
     if (!silent) {
+      this.lastPopupAt = now;
       this.notifyWindowsDesktop(pin);
     }
 
     return {
       pin,
-      expiresInSeconds: 120,
+      expiresInSeconds: Math.round(PIN_TTL_MS / 1000),
+    };
+  }
+
+  /** Rate-limited PIN request for LAN clients calling POST /api/v1/pair/request. */
+  requestPin(ip: string, silent = false): PinRequestResult {
+    const now = Date.now();
+    this.pruneLimits(now);
+    const cleanIp = ip.replace(/^::ffff:/, '').trim() || 'unknown';
+
+    const verifyLimit = this.ipLimits.get(cleanIp);
+    if (verifyLimit && verifyLimit.blockedUntil > now) {
+      const retryAfter = Math.ceil((verifyLimit.blockedUntil - now) / 1000);
+      return {
+        ok: false,
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: `Too many pairing attempts. Blocked for ${retryAfter} seconds.`,
+        retryAfterSeconds: retryAfter,
+      };
+    }
+
+    const reqLimit = this.requestLimits.get(cleanIp);
+    if (reqLimit && now - reqLimit.windowStart < PIN_REQUEST_WINDOW_MS) {
+      if (reqLimit.count >= PIN_REQUEST_MAX_PER_WINDOW) {
+        const retryAfter = Math.max(1, Math.ceil((reqLimit.windowStart + PIN_REQUEST_WINDOW_MS - now) / 1000));
+        warn(`[AUTH] PIN request rate-limited for ${cleanIp} (${retryAfter}s remaining)`);
+        return {
+          ok: false,
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: `Too many PIN requests. Try again in ${retryAfter} seconds.`,
+          retryAfterSeconds: retryAfter,
+        };
+      }
+      reqLimit.count += 1;
+    } else {
+      this.requestLimits.set(cleanIp, { count: 1, windowStart: now });
+    }
+
+    // Global cooldown: reuse active PIN instead of flooding the Windows desktop with MessageBoxes
+    const active = this.getActivePin();
+    if (active && now - this.lastPopupAt < PIN_POPUP_COOLDOWN_MS) {
+      return {
+        ok: true,
+        pin: active.pin,
+        expiresInSeconds: active.expiresInSeconds,
+        reused: true,
+      };
+    }
+
+    const created = this.generatePin(silent);
+    this.lastPopupAt = now;
+    return {
+      ok: true,
+      pin: created.pin,
+      expiresInSeconds: created.expiresInSeconds,
+      reused: false,
     };
   }
 
@@ -65,10 +150,11 @@ export class PinManager {
 
   verifyPin(ip: string, inputPin: string): PinValidationResult {
     const now = Date.now();
+    this.pruneLimits(now);
     const cleanIp = ip.replace(/^::ffff:/, '').trim() || 'unknown';
-    const limit = this.ipLimits.get(cleanIp) ?? { attempts: 0, blockedUntil: 0 };
+    const limit = this.ipLimits.get(cleanIp) ?? { attempts: 0, blockedUntil: 0, lastActivityAt: now };
 
-    // Check rate-limit block
+    // Check active rate-limit block
     if (limit.blockedUntil > now) {
       const retryAfter = Math.ceil((limit.blockedUntil - now) / 1000);
       warn(`[AUTH] Pairing attempt blocked by rate limit for ${cleanIp} (${retryAfter}s remaining)`);
@@ -79,6 +165,13 @@ export class PinManager {
         retryAfterSeconds: retryAfter,
       };
     }
+
+    // Reset failure counter once a previous lockout window has expired
+    if (limit.blockedUntil > 0 && limit.blockedUntil <= now) {
+      limit.attempts = 0;
+      limit.blockedUntil = 0;
+    }
+    limit.lastActivityAt = now;
 
     // Check PIN expiration
     if (!this.currentPin || now > this.pinExpiresAt) {
@@ -99,13 +192,14 @@ export class PinManager {
       info(`[AUTH] PIN validated successfully for IP ${cleanIp}`);
       this.currentPin = null; // Single-use PIN
       this.ipLimits.delete(cleanIp);
+      this.requestLimits.delete(cleanIp);
       return { ok: true };
     }
 
     // Incorrect PIN: increment failure counter
     limit.attempts += 1;
     if (limit.attempts >= 3) {
-      limit.blockedUntil = now + 300_000; // 5-minute block
+      limit.blockedUntil = now + PIN_LOCKOUT_MS; // 5-minute block
       this.ipLimits.set(cleanIp, limit);
       this.currentPin = null; // Immediately destroy PIN against brute force (SECURITY §5.2)
       warn(`[AUTH] 3 PIN failures reached by ${cleanIp}. IP blocked for 300s and PIN invalidated.`);
@@ -113,7 +207,7 @@ export class PinManager {
         ok: false,
         error: 'RATE_LIMIT_EXCEEDED',
         message: 'Too many incorrect attempts. Blocked for 300 seconds.',
-        retryAfterSeconds: 300,
+        retryAfterSeconds: Math.round(PIN_LOCKOUT_MS / 1000),
       };
     }
 
@@ -126,6 +220,20 @@ export class PinManager {
       message: `Incorrect PIN. Attempts remaining before lockout: ${attemptsRemaining}`,
       attemptsRemaining,
     };
+  }
+
+  private pruneLimits(now: number): void {
+    for (const [ip, entry] of this.ipLimits) {
+      const lockoutExpired = entry.blockedUntil === 0 || entry.blockedUntil <= now;
+      if (lockoutExpired && now - entry.lastActivityAt > IP_LIMIT_IDLE_TTL_MS) {
+        this.ipLimits.delete(ip);
+      }
+    }
+    for (const [ip, entry] of this.requestLimits) {
+      if (now - entry.windowStart >= PIN_REQUEST_WINDOW_MS) {
+        this.requestLimits.delete(ip);
+      }
+    }
   }
 
   private notifyWindowsDesktop(pin: string): void {
@@ -184,6 +292,7 @@ export class TokenStore {
   private filePath: string;
   private devices: Map<string, PairedDevice> = new Map();
   private tokenHashMap: Map<string, PairedDevice> = new Map(); // tokenHash -> Device
+  private lastPersistedSeenAt: Map<string, number> = new Map();
 
   constructor(storageDir?: string) {
     const baseDir = storageDir || (process.env.APPDATA ? path.join(process.env.APPDATA, 'NuvioRemote') : path.resolve(__dirname, '..'));
@@ -266,8 +375,16 @@ export class TokenStore {
     const tokenHash = this.hashToken(token);
     const dev = this.tokenHashMap.get(tokenHash);
     if (dev) {
-      dev.lastSeenAt = new Date().toISOString();
-      if (ip) dev.lastIp = ip;
+      const nowMs = Date.now();
+      const cleanIp = ip ? ip.replace(/^::ffff:/, '').trim() : '';
+      const ipChanged = Boolean(cleanIp && cleanIp !== dev.lastIp);
+      dev.lastSeenAt = new Date(nowMs).toISOString();
+      if (cleanIp) dev.lastIp = cleanIp;
+      const prevSaved = this.lastPersistedSeenAt.get(dev.deviceId) ?? 0;
+      if (ipChanged || nowMs - prevSaved >= 60_000) {
+        this.lastPersistedSeenAt.set(dev.deviceId, nowMs);
+        this.save();
+      }
       return dev;
     }
     return null;
@@ -281,11 +398,27 @@ export class TokenStore {
     return Array.from(this.devices.values());
   }
 
+  /** Returns device metadata safe for HTTP APIs (omits internal tokenHash). */
+  getPublicDevices(): PublicPairedDevice[] {
+    return Array.from(this.devices.values()).map((d) => ({
+      deviceId: d.deviceId,
+      deviceName: d.deviceName,
+      pairedAt: d.pairedAt,
+      lastSeenAt: d.lastSeenAt,
+      lastIp: d.lastIp,
+    }));
+  }
+
+  getDevice(deviceId: string): PairedDevice | null {
+    return this.devices.get(deviceId) ?? null;
+  }
+
   revokeDevice(deviceId: string): boolean {
     const dev = this.devices.get(deviceId);
     if (!dev) return false;
     this.tokenHashMap.delete(dev.tokenHash);
     this.devices.delete(deviceId);
+    this.lastPersistedSeenAt.delete(deviceId);
     this.save();
     return true;
   }

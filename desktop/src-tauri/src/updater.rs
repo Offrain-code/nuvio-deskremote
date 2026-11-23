@@ -11,14 +11,19 @@ use tauri::{AppHandle, Emitter, State};
 
 const GITHUB_LATEST_RELEASE_URL: &str =
     "https://api.github.com/repos/Offrain-code/nuvio-deskremote/releases/latest";
+const OFFICIAL_RELEASE_PATH_PREFIX: &str = "/offrain-code/nuvio-deskremote/releases/download/";
 const RELEASE_NOTES_ASSET_NAME: &str = "release-notes.json";
+const SHA256SUMS_ASSET_NAME: &str = "SHA256SUMS.txt";
 const MAX_NOTES_JSON_BYTES: usize = 64 * 1024;
 const MAX_CHANGELOG_ITEMS: usize = 8;
+const MAX_REDIRECT_HOPS: usize = 5;
 
 pub struct UpdateState {
     cancel: Arc<AtomicBool>,
     downloading: Arc<AtomicBool>,
+    checked_release: Mutex<Option<UpdateCheckResult>>,
     downloaded_path: Mutex<Option<PathBuf>>,
+    downloaded_sha256: Mutex<Option<String>>,
 }
 
 impl UpdateState {
@@ -26,7 +31,9 @@ impl UpdateState {
         Self {
             cancel: Arc::new(AtomicBool::new(false)),
             downloading: Arc::new(AtomicBool::new(false)),
+            checked_release: Mutex::new(None),
             downloaded_path: Mutex::new(None),
+            downloaded_sha256: Mutex::new(None),
         }
     }
 }
@@ -53,6 +60,23 @@ impl PartialOrd for SemVer {
     }
 }
 
+fn compare_pre_release(a: &str, b: &str) -> CmpOrdering {
+    let a_parts: Vec<&str> = a.split('.').collect();
+    let b_parts: Vec<&str> = b.split('.').collect();
+    for (pa, pb) in a_parts.iter().zip(b_parts.iter()) {
+        let ord = match (pa.parse::<u64>(), pb.parse::<u64>()) {
+            (Ok(na), Ok(nb)) => na.cmp(&nb),
+            (Ok(_), Err(_)) => CmpOrdering::Less,
+            (Err(_), Ok(_)) => CmpOrdering::Greater,
+            (Err(_), Err(_)) => pa.to_ascii_lowercase().cmp(&pb.to_ascii_lowercase()),
+        };
+        if ord != CmpOrdering::Equal {
+            return ord;
+        }
+    }
+    a_parts.len().cmp(&b_parts.len())
+}
+
 impl Ord for SemVer {
     fn cmp(&self, other: &Self) -> CmpOrdering {
         self.major
@@ -63,7 +87,7 @@ impl Ord for SemVer {
                 (None, None) => CmpOrdering::Equal,
                 (None, Some(_)) => CmpOrdering::Greater,
                 (Some(_), None) => CmpOrdering::Less,
-                (Some(a), Some(b)) => a.to_ascii_lowercase().cmp(&b.to_ascii_lowercase()),
+                (Some(a), Some(b)) => compare_pre_release(a, b),
             })
     }
 }
@@ -139,8 +163,13 @@ pub fn parse_semver(raw: &str) -> Option<SemVer> {
         .trim_start_matches(['v', 'V']);
     let without_build = trimmed.split('+').next().unwrap_or("");
     let (core, pre) = match without_build.split_once('-') {
-        Some((c, p)) if !p.trim().is_empty() => (c, Some(p.trim().to_string())),
-        Some((c, _)) => (c, None),
+        Some((c, p)) => {
+            let p_clean = p.trim();
+            if p_clean.is_empty() || p_clean.split('.').any(|seg| seg.is_empty()) {
+                return None;
+            }
+            (c, Some(p_clean.to_string()))
+        }
         None => (without_build, None),
     };
     let parts: Vec<&str> = core.split('.').collect();
@@ -170,19 +199,103 @@ pub fn is_newer_version(current: &str, candidate: &str) -> bool {
 }
 
 pub fn is_allowed_download_url(raw: &str) -> bool {
-    let trimmed = raw.trim();
-    let Some(rest) = trimmed.strip_prefix("https://") else {
+    let Ok(parsed) = reqwest::Url::parse(raw.trim()) else {
         return false;
     };
-    let host_port = rest.split(['/', '?', '#']).next().unwrap_or("");
-    if host_port.is_empty() || host_port.contains('@') {
+    if parsed.scheme() != "https"
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.port().is_some()
+    {
         return false;
     }
-    let host = host_port.split(':').next().unwrap_or("").to_ascii_lowercase();
-    host == "github.com"
-        || host == "api.github.com"
-        || host == "githubusercontent.com"
-        || host.ends_with(".githubusercontent.com")
+    let Some(host) = parsed.host_str().map(|h| h.to_ascii_lowercase()) else {
+        return false;
+    };
+    if parsed.path_segments().is_some_and(|mut segs| segs.any(|s| s == "..")) {
+        return false;
+    }
+    if host == "github.com" {
+        return parsed
+            .path()
+            .to_ascii_lowercase()
+            .starts_with(OFFICIAL_RELEASE_PATH_PREFIX);
+    }
+    matches!(
+        host.as_str(),
+        "objects.githubusercontent.com"
+            | "release-assets.githubusercontent.com"
+            | "github-releases.githubusercontent.com"
+    )
+}
+
+fn build_safe_redirect_policy() -> reqwest::redirect::Policy {
+    reqwest::redirect::Policy::custom(|attempt| {
+        if attempt.previous().len() >= MAX_REDIRECT_HOPS {
+            attempt.error("Too many HTTP redirects")
+        } else if is_allowed_download_url(attempt.url().as_str()) {
+            attempt.follow()
+        } else {
+            attempt.error("Blocked redirect to untrusted download host")
+        }
+    })
+}
+
+pub fn parse_sha256_sums(text: &str, asset_name: &str) -> Option<String> {
+    let target = asset_name.trim();
+    if target.is_empty() {
+        return None;
+    }
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let mut parts = trimmed.split_whitespace();
+        let (Some(hash_raw), Some(file_token)) = (parts.next(), parts.next()) else {
+            continue;
+        };
+        let file_raw = file_token.trim_start_matches('*');
+        let file_base = file_raw.rsplit(['/', '\\']).next().unwrap_or(file_raw);
+        if file_base.eq_ignore_ascii_case(target) {
+            if let Some(valid) = extract_sha256(Some(hash_raw)) {
+                return Some(valid);
+            }
+        }
+    }
+    None
+}
+
+fn read_bounded_bytes(
+    resp: reqwest::blocking::Response,
+    max_bytes: usize,
+) -> Option<Vec<u8>> {
+    let mut buf = Vec::new();
+    resp.take((max_bytes + 1) as u64).read_to_end(&mut buf).ok()?;
+    if buf.len() > max_bytes {
+        return None;
+    }
+    Some(buf)
+}
+
+fn compute_file_sha256(path: &PathBuf) -> Result<String, String> {
+    let mut file = File::open(path).map_err(|e| format!("Could not read installer file: {}", e))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .map_err(|e| format!("Could not hash installer file: {}", e))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect())
 }
 
 fn extract_sha256(digest: Option<&str>) -> Option<String> {
@@ -319,13 +432,10 @@ fn fetch_localized_notes(
         .header("Accept", "application/json")
         .send()
         .ok()?;
-    if !resp.status().is_success() {
+    if !resp.status().is_success() || !is_allowed_download_url(resp.url().as_str()) {
         return None;
     }
-    let bytes = resp.bytes().ok()?;
-    if bytes.len() > MAX_NOTES_JSON_BYTES {
-        return None;
-    }
+    let bytes = read_bounded_bytes(resp, MAX_NOTES_JSON_BYTES)?;
     let parsed: LocalizedNotesJson = serde_json::from_slice(&bytes).ok()?;
     let en = sanitize_notes_list(parsed.en);
     let pt = if !parsed.pt_br.is_empty() {
@@ -338,16 +448,49 @@ fn fetch_localized_notes(
     Some((en, pt))
 }
 
+fn fetch_sha256_from_sums_asset(
+    client: &reqwest::blocking::Client,
+    assets: &[GitHubAsset],
+    target_asset_name: &str,
+) -> Option<String> {
+    let sums_asset = assets
+        .iter()
+        .find(|a| a.name.eq_ignore_ascii_case(SHA256SUMS_ASSET_NAME))?;
+    if !is_allowed_download_url(&sums_asset.browser_download_url) {
+        return None;
+    }
+    let resp = client
+        .get(&sums_asset.browser_download_url)
+        .header("Accept", "text/plain")
+        .send()
+        .ok()?;
+    if !resp.status().is_success() || !is_allowed_download_url(resp.url().as_str()) {
+        return None;
+    }
+    let bytes = read_bounded_bytes(resp, MAX_NOTES_JSON_BYTES)?;
+    let text = std::str::from_utf8(&bytes).ok()?;
+    parse_sha256_sums(text, target_asset_name)
+}
+
 fn check_github_update_blocking() -> Result<UpdateCheckResult, String> {
     let current_version = env!("CARGO_PKG_VERSION").to_string();
     let user_agent = format!("NuvioDeskRemote-Companion/{}", current_version);
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(12))
-        .user_agent(user_agent)
+    let api_client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(15))
+        .redirect(reqwest::redirect::Policy::none())
+        .user_agent(&user_agent)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let asset_client = reqwest::blocking::Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .read_timeout(Duration::from_secs(15))
+        .redirect(build_safe_redirect_policy())
+        .user_agent(&user_agent)
         .build()
         .map_err(|e| e.to_string())?;
 
-    let resp = client
+    let resp = api_client
         .get(GITHUB_LATEST_RELEASE_URL)
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
@@ -380,9 +523,12 @@ fn check_github_update_blocking() -> Result<UpdateCheckResult, String> {
         return Err("Untrusted download URL in GitHub release".to_string());
     }
 
+    let expected_sha256 = extract_sha256(exe_asset.digest.as_deref())
+        .or_else(|| fetch_sha256_from_sums_asset(&asset_client, &release.assets, &exe_asset.name));
+
     let mut notes_en = parse_markdown_bullets(release.body.as_deref().unwrap_or(""));
     let mut notes_pt_br = Vec::new();
-    if let Some((loc_en, loc_pt)) = fetch_localized_notes(&client, &release.assets) {
+    if let Some((loc_en, loc_pt)) = fetch_localized_notes(&asset_client, &release.assets) {
         if !loc_en.is_empty() {
             notes_en = loc_en;
         }
@@ -399,7 +545,7 @@ fn check_github_update_blocking() -> Result<UpdateCheckResult, String> {
         asset_name: exe_asset.name.clone(),
         download_url: exe_asset.browser_download_url.clone(),
         asset_size: exe_asset.size,
-        expected_sha256: extract_sha256(exe_asset.digest.as_deref()),
+        expected_sha256,
         notes_en,
         notes_pt_br,
         html_url: release.html_url,
@@ -428,10 +574,20 @@ pub fn get_app_version() -> String {
 }
 
 #[tauri::command]
-pub async fn check_github_update() -> Result<UpdateCheckResult, String> {
-    tauri::async_runtime::spawn_blocking(check_github_update_blocking)
+pub async fn check_github_update(
+    state: State<'_, UpdateState>,
+) -> Result<UpdateCheckResult, String> {
+    let result = tauri::async_runtime::spawn_blocking(check_github_update_blocking)
         .await
-        .map_err(|e| format!("Update check failed: {}", e))?
+        .map_err(|e| format!("Update check failed: {}", e))??;
+    if let Ok(mut guard) = state.checked_release.lock() {
+        *guard = if result.update_available {
+            Some(result.clone())
+        } else {
+            None
+        };
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -443,14 +599,21 @@ pub fn cancel_github_update(state: State<'_, UpdateState>) {
 pub async fn download_github_update(
     app: AppHandle,
     state: State<'_, UpdateState>,
-    download_url: String,
-    asset_name: String,
-    version: String,
-    expected_sha256: Option<String>,
 ) -> Result<DownloadUpdateResult, String> {
-    if !is_allowed_download_url(&download_url) {
+    let verified_release = {
+        let guard = state.checked_release.lock().map_err(|e| e.to_string())?;
+        guard
+            .clone()
+            .filter(|r| r.update_available)
+            .ok_or_else(|| "No verified update check result available".to_string())?
+    };
+
+    if !is_allowed_download_url(&verified_release.download_url) {
         return Err("Refused untrusted download URL".to_string());
     }
+    let expected_hash = extract_sha256(verified_release.expected_sha256.as_deref())
+        .ok_or_else(|| "SHA-256 verification failed: missing official checksum".to_string())?;
+
     if state
         .downloading
         .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
@@ -459,21 +622,39 @@ pub async fn download_github_update(
         return Err("Update download already in progress".to_string());
     }
     state.cancel.store(false, Ordering::SeqCst);
+    if let Ok(mut guard) = state.downloaded_path.lock() {
+        *guard = None;
+    }
+    if let Ok(mut guard) = state.downloaded_sha256.lock() {
+        *guard = None;
+    }
 
     let cancel_flag = Arc::clone(&state.cancel);
     let downloading_flag = Arc::clone(&state.downloading);
-    let safe_name = sanitize_installer_filename(&asset_name, &version);
-    let expected_hash = extract_sha256(expected_sha256.as_deref());
+    let safe_name = sanitize_installer_filename(
+        &verified_release.asset_name,
+        &verified_release.latest_version,
+    );
+    let expected_for_worker = expected_hash.clone();
 
     let result = tauri::async_runtime::spawn_blocking(move || {
         let _reset_guard = ResetFlag(downloading_flag);
-        download_installer_blocking(app, cancel_flag, download_url, safe_name, expected_hash)
+        download_installer_blocking(
+            app,
+            cancel_flag,
+            verified_release.download_url,
+            safe_name,
+            expected_for_worker,
+        )
     })
     .await
     .map_err(|e| format!("Download worker failed: {}", e))??;
 
     if let Ok(mut guard) = state.downloaded_path.lock() {
         *guard = Some(PathBuf::from(&result.file_path));
+    }
+    if let Ok(mut guard) = state.downloaded_sha256.lock() {
+        *guard = Some(expected_hash);
     }
     Ok(result)
 }
@@ -483,7 +664,7 @@ fn download_installer_blocking(
     cancel: Arc<AtomicBool>,
     download_url: String,
     safe_name: String,
-    expected_sha256: Option<String>,
+    expected_sha256: String,
 ) -> Result<DownloadUpdateResult, String> {
     let dir = std::env::temp_dir().join("NuvioDeskRemoteUpdate");
     fs::create_dir_all(&dir).map_err(|e| format!("Could not prepare update folder: {}", e))?;
@@ -492,7 +673,9 @@ fn download_installer_blocking(
     let part_path = dir.join(format!("{}.part", safe_name));
 
     let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(300))
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(30))
+        .redirect(build_safe_redirect_policy())
         .user_agent(format!("NuvioDeskRemote-Companion/{}", env!("CARGO_PKG_VERSION")))
         .build()
         .map_err(|e| e.to_string())?;
@@ -504,27 +687,29 @@ fn download_installer_blocking(
     if !resp.status().is_success() {
         return Err(format!("Download failed with HTTP {}", resp.status()));
     }
+    if !is_allowed_download_url(resp.url().as_str()) {
+        return Err("Refused redirect to untrusted download host".to_string());
+    }
 
     let total = resp.content_length().unwrap_or(0);
-    let computed_hex = match stream_file_with_sha256(&app, &cancel, &mut resp, &part_path, total) {
-        Ok((hex, downloaded)) => (hex, downloaded),
-        Err(err) => {
-            let _ = fs::remove_file(&part_path);
-            return Err(err);
-        }
-    };
-    let (computed_hex, downloaded) = computed_hex;
-
-    let sha256_verified = match expected_sha256 {
-        Some(ref expected) => {
-            if !expected.eq_ignore_ascii_case(&computed_hex) {
+    let (computed_hex, downloaded) =
+        match stream_file_with_sha256(&app, &cancel, &mut resp, &part_path, total) {
+            Ok(pair) => pair,
+            Err(err) => {
                 let _ = fs::remove_file(&part_path);
-                return Err("SHA-256 verification failed".to_string());
+                return Err(err);
             }
-            true
-        }
-        None => false,
-    };
+        };
+
+    if downloaded == 0 || (total > 0 && downloaded != total) {
+        let _ = fs::remove_file(&part_path);
+        return Err("Incomplete installer download".to_string());
+    }
+
+    if !expected_sha256.eq_ignore_ascii_case(&computed_hex) {
+        let _ = fs::remove_file(&part_path);
+        return Err("SHA-256 verification failed".to_string());
+    }
 
     let _ = fs::remove_file(&final_path);
     fs::rename(&part_path, &final_path).map_err(|e| {
@@ -543,7 +728,7 @@ fn download_installer_blocking(
 
     Ok(DownloadUpdateResult {
         file_path: final_path.to_string_lossy().to_string(),
-        sha256_verified,
+        sha256_verified: true,
     })
 }
 
@@ -609,14 +794,36 @@ pub async fn install_downloaded_update(
     companion: State<'_, crate::CompanionProcess>,
     update: State<'_, UpdateState>,
 ) -> Result<(), String> {
-    let path = {
-        let guard = update.downloaded_path.lock().map_err(|e| e.to_string())?;
-        guard
-            .clone()
-            .ok_or_else(|| "No verified installer is ready".to_string())?
+    let (path, expected_sha256) = {
+        let path_guard = update.downloaded_path.lock().map_err(|e| e.to_string())?;
+        let hash_guard = update.downloaded_sha256.lock().map_err(|e| e.to_string())?;
+        (
+            path_guard
+                .clone()
+                .ok_or_else(|| "No verified installer is ready".to_string())?,
+            hash_guard
+                .clone()
+                .ok_or_else(|| "SHA-256 verification failed: missing digest".to_string())?,
+        )
     };
     if !path.exists() {
         return Err("Downloaded installer file was not found".to_string());
+    }
+
+    // Re-verify SHA-256 immediately before elevated execution to prevent TOCTOU tampering in %TEMP%
+    let verify_path = path.clone();
+    let actual_sha256 = tauri::async_runtime::spawn_blocking(move || compute_file_sha256(&verify_path))
+        .await
+        .map_err(|e| format!("SHA-256 verification worker failed: {}", e))??;
+    if !actual_sha256.eq_ignore_ascii_case(&expected_sha256) {
+        let _ = fs::remove_file(&path);
+        if let Ok(mut guard) = update.downloaded_path.lock() {
+            *guard = None;
+        }
+        if let Ok(mut guard) = update.downloaded_sha256.lock() {
+            *guard = None;
+        }
+        return Err("SHA-256 verification failed before install".to_string());
     }
 
     #[cfg(target_os = "windows")]
@@ -666,20 +873,42 @@ mod tests {
         assert!(is_newer_version("0.4.3", "0.5.0"));
         assert!(is_newer_version("v0.4.3", "v0.10.0"));
         assert!(is_newer_version("0.5.0-rc1", "0.5.0"));
+        assert!(is_newer_version("0.5.0-rc.2", "0.5.0-rc.10"));
+        assert!(!is_newer_version("0.5.0-rc.10", "0.5.0-rc.2"));
+        assert!(parse_semver("0.5.0-").is_none());
         assert!(!is_newer_version("0.5.0", "0.5.0"));
         assert!(!is_newer_version("0.5.1", "0.5.0"));
     }
 
     #[test]
-    fn url_allowlist_checks_https_and_github_hosts() {
+    fn url_allowlist_checks_https_and_official_repo_or_cdn() {
         assert!(is_allowed_download_url(
             "https://github.com/Offrain-code/nuvio-deskremote/releases/download/v0.5.0/setup.exe"
         ));
         assert!(is_allowed_download_url(
-            "https://objects.githubusercontent.com/asset/123"
+            "https://objects.githubusercontent.com/github-production-release-asset/123"
         ));
-        assert!(!is_allowed_download_url("http://github.com/test.exe"));
+        assert!(is_allowed_download_url(
+            "https://release-assets.githubusercontent.com/github-production-release-asset/123"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://github.com/attacker/evil-repo/releases/download/v1.0.0/setup.exe"
+        ));
+        assert!(!is_allowed_download_url(
+            "https://github.com/Offrain-code/nuvio-deskremote/releases/download/../evil.exe"
+        ));
+        assert!(!is_allowed_download_url("http://github.com/Offrain-code/nuvio-deskremote/releases/download/v0.5.0/setup.exe"));
         assert!(!is_allowed_download_url("https://github.com.evil.com/test.exe"));
+    }
+
+    #[test]
+    fn sha256sums_parser_matches_asset_case_insensitively() {
+        let sums = "# comment\nmalformed-single-token\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  *Nuvio-DeskRemote-Setup.exe\n";
+        assert_eq!(
+            parse_sha256_sums(sums, "nuvio-deskremote-setup.exe").as_deref(),
+            Some("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
+        );
+        assert!(parse_sha256_sums(sums, "other.exe").is_none());
     }
 
     #[test]

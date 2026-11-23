@@ -3,9 +3,11 @@ package com.nuvio.remote.discovery
 import android.content.Context
 import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
+import com.nuvio.remote.connection.EndpointUrlResolver
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import org.json.JSONObject
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.Inet4Address
@@ -52,6 +54,30 @@ fun discoverNsd(context: Context, serviceType: String = "_nuvio-remote._tcp."): 
     }
 }
 
+/**
+ * Parses and validates a UDP discovery response against the packet's real source IP.
+ * Rejects non-LAN sources and ignores spoofed `ip` values inside the JSON body.
+ */
+internal fun parseDiscoveryPacket(text: String, senderIp: String?): PcService? {
+    val safeSenderIp = senderIp?.trim().orEmpty()
+    val obj = if (EndpointUrlResolver.isPrivateLanHost(safeSenderIp)) {
+        runCatching { JSONObject(text) }.getOrNull()
+    } else {
+        null
+    }
+    val port = obj?.optInt("port", 8787) ?: -1
+    val isValid = obj != null && obj.optString("status").equals("FOUND", ignoreCase = true) && port in 1..65535
+    if (!isValid) return null
+    val hostname = obj.optString("server_name", "").trim().ifEmpty { safeSenderIp }.take(64)
+    val serverId = obj.optString("server_id", "").trim().take(80)
+    return PcService(
+        hostname = hostname,
+        ip = safeSenderIp,
+        port = port,
+        serverId = serverId,
+    )
+}
+
 /** UDP broadcast fallback (SECURITY section 2.2). Response port is ephemeral. */
 fun discoverUdp(port: Int = 8766, timeoutMs: Int = 1800): List<PcService> {
     val found = LinkedHashMap<String, PcService>()
@@ -59,7 +85,6 @@ fun discoverUdp(port: Int = 8766, timeoutMs: Int = 1800): List<PcService> {
     try {
         DatagramSocket().use { socket ->
             socket.broadcast = true
-            socket.soTimeout = timeoutMs
             val data = probe.toByteArray(Charsets.UTF_8)
 
             val targets = LinkedHashSet<InetAddress>()
@@ -80,27 +105,18 @@ fun discoverUdp(port: Int = 8766, timeoutMs: Int = 1800): List<PcService> {
                 runCatching { socket.send(DatagramPacket(data, data.size, dest, port)) }
             }
 
+            val deadlineNs = System.nanoTime() + timeoutMs.toLong() * 1_000_000L
             val buf = ByteArray(1024)
             while (true) {
+                val remainingMs = ((deadlineNs - System.nanoTime()) / 1_000_000L).toInt()
+                if (remainingMs <= 0) break
+                socket.soTimeout = remainingMs
                 try {
                     val packet = DatagramPacket(buf, buf.size)
                     socket.receive(packet)
                     val text = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                    if (text.contains("\"FOUND\"")) {
-                        val portMatch = Regex("\"port\"\\s*:\\s*(\\d+)").find(text)
-                        val nameMatch = Regex("\"server_name\"\\s*:\\s*\"([^\"]+)\"").find(text)
-                        val ipMatch = Regex("\"ip\"\\s*:\\s*\"([^\"]+)\"").find(text)
-                        val ip = ipMatch?.groupValues?.get(1)?.takeIf { it.isNotBlank() }
-                            ?: packet.address.hostAddress
-                            ?: continue
-                        found.getOrPut(ip) {
-                            PcService(
-                                nameMatch?.groupValues?.get(1) ?: ip,
-                                ip,
-                                portMatch?.groupValues?.get(1)?.toInt() ?: 8787,
-                            )
-                        }
-                    }
+                    val service = parseDiscoveryPacket(text, packet.address?.hostAddress) ?: continue
+                    found.putIfAbsent(service.ip, service)
                 } catch (_: SocketTimeoutException) {
                     break
                 }

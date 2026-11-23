@@ -94,6 +94,7 @@ fun SettingsScreen(
     savedHost: String,
     tunnelUrl: String?,
     onConnect: (host: String, port: Int) -> Unit,
+    onDisconnect: () -> Unit = {},
     appLanguage: AppLanguage,
     onAppLanguageChange: (AppLanguage) -> Unit,
     hapticsEnabled: Boolean,
@@ -161,8 +162,17 @@ fun SettingsScreen(
                     onOpenQrScanner = { qrScanTarget = "pc" },
                     onOpenPairDialog = { showPinDialog = true },
                     onUnpair = {
-                        pairing.unpair()
+                        val targetHost = hostInput.trim().ifEmpty { savedHost }
                         isPaired = false
+                        coroutineScope.launch {
+                            withContext(Dispatchers.IO) {
+                                if (targetHost.isNotEmpty()) {
+                                    pairing.revokeCurrentDevice(targetHost)
+                                }
+                            }
+                            pairing.unpair()
+                            onDisconnect()
+                        }
                     },
                 )
             }
@@ -294,7 +304,8 @@ private fun handleQrPayload(
                     pairing.pair(scannedHost, payload.port ?: 8765, scannedPin)
                 }
                 if (res is PairResult.Paired) {
-                    onPaired(scannedHost, payload.port ?: 8787)
+                    val wsPort = if (payload.port == null || payload.port == 8765) 8787 else payload.port
+                    onPaired(scannedHost, wsPort)
                 } else {
                     onStatus(formatPairFailureMessage(res, scannedHost, lang))
                 }

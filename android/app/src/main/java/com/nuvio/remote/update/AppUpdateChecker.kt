@@ -29,13 +29,27 @@ const val GITHUB_LATEST_RELEASE_API_URL =
     "https://api.github.com/repos/Offrain-code/nuvio-deskremote/releases/latest"
 const val UPDATE_DISMISS_COOLDOWN_MS = 24L * 60L * 60L * 1000L
 
+private const val OFFICIAL_RELEASE_PATH_PREFIX = "/offrain-code/nuvio-deskremote/releases/download/"
 private const val RELEASE_NOTES_ASSET_NAME = "release-notes.json"
+private const val SHA256SUMS_ASSET_NAME = "SHA256SUMS.txt"
 private const val MAX_NOTES_JSON_BYTES = 64 * 1024
 private const val MAX_CHANGELOG_ITEMS = 8
+private const val MAX_REDIRECT_HOPS = 5
+private const val HTTP_REDIRECT_MOVED = 301
+private const val HTTP_REDIRECT_FOUND = 302
+private const val HTTP_REDIRECT_SEE_OTHER = 303
+private const val HTTP_REDIRECT_TEMP = 307
+private const val HTTP_REDIRECT_PERM = 308
+private const val HTTPS_DEFAULT_PORT = 443
 private const val PROGRESS_EMIT_INTERVAL_MS = 90L
 private const val DOWNLOAD_BUFFER_BYTES = 32 * 1024
 private const val BYTES_PER_KB = 1024.0
 private const val BYTES_PER_MB = 1024.0 * 1024.0
+private val ALLOWED_CDN_HOSTS = setOf(
+    "objects.githubusercontent.com",
+    "release-assets.githubusercontent.com",
+    "github-releases.githubusercontent.com",
+)
 
 /** Parsed semantic version (`major.minor.patch[-preRelease]`) for safe release comparisons. */
 data class SemanticVersion(
@@ -67,6 +81,7 @@ data class AppUpdateRelease(
     val notesPtBr: List<String>,
     val htmlUrl: String,
     val notesAssetUrl: String? = null,
+    val checksumsAssetUrl: String? = null,
 ) {
     /** Returns release notes matching the active in-app display language with graceful fallback. */
     fun notesFor(lang: ResolvedLanguage): List<String> = when (lang) {
@@ -128,7 +143,25 @@ private fun comparePreRelease(a: String?, b: String?): Int = when {
     a.isNullOrBlank() && b.isNullOrBlank() -> 0
     a.isNullOrBlank() -> 1
     b.isNullOrBlank() -> -1
-    else -> a.compareTo(b, ignoreCase = true)
+    else -> comparePreReleaseIdentifiers(a.split('.'), b.split('.'))
+}
+
+private fun comparePreReleaseIdentifiers(aParts: List<String>, bParts: List<String>): Int {
+    val limit = minOf(aParts.size, bParts.size)
+    for (i in 0 until limit) {
+        val pa = aParts[i]
+        val pb = bParts[i]
+        val na = pa.toLongOrNull()
+        val nb = pb.toLongOrNull()
+        val cmp = when {
+            na != null && nb != null -> na.compareTo(nb)
+            na != null -> -1
+            nb != null -> 1
+            else -> pa.compareTo(pb, ignoreCase = true)
+        }
+        if (cmp != 0) return cmp
+    }
+    return aParts.size.compareTo(bParts.size)
 }
 
 /** Parses a version string such as `"v0.5.0"` or `"0.4.3-rc1"`. */
@@ -148,15 +181,39 @@ fun isNewerVersion(current: String, candidate: String): Boolean {
     return next > cur
 }
 
-/** Enforces HTTPS and official GitHub release asset hosts to prevent download hijacking. */
+/** Enforces HTTPS and official GitHub release asset paths/CDNs to prevent download hijacking. */
 fun isAllowedDownloadUrl(url: String): Boolean {
     val parsed = url.trim().toHttpUrlOrNull() ?: return false
-    if (!parsed.isHttps) return false
+    if (!parsed.isHttps || parsed.username.isNotEmpty() || parsed.password.isNotEmpty()) return false
+    if (parsed.port != HTTPS_DEFAULT_PORT) return false
+    if (parsed.pathSegments.any { it == ".." }) return false
     val host = parsed.host.lowercase(Locale.ROOT)
-    return host == "github.com" ||
-        host == "api.github.com" ||
-        host == "githubusercontent.com" ||
-        host.endsWith(".githubusercontent.com")
+    if (host == "github.com") {
+        return parsed.encodedPath.lowercase(Locale.ROOT).startsWith(OFFICIAL_RELEASE_PATH_PREFIX)
+    }
+    return host in ALLOWED_CDN_HOSTS
+}
+
+/** Parses a `SHA256SUMS.txt` file and returns the matching 64-hex SHA-256 digest for [assetName]. */
+fun parseSha256Sums(text: String, assetName: String): String? {
+    val target = assetName.trim()
+    if (target.isEmpty()) return null
+    return text.lineSequence().firstNotNullOfOrNull { parseSha256SumLine(it, target) }
+}
+
+private fun parseSha256SumLine(rawLine: String, target: String): String? {
+    val line = rawLine.trim()
+    val parts = if (line.isEmpty() || line.startsWith("#")) emptyList() else line.split(Regex("\\s+"), limit = 2)
+    val hashMatch = parts.getOrNull(0)?.trim()?.let { SHA256_REGEX.matchEntire(it) } ?: return null
+    val fileBase = parts.getOrNull(1)?.trim()?.removePrefix("*")
+        ?.substringAfterLast('/')
+        ?.substringAfterLast('\\')
+        ?: return null
+    return if (fileBase.equals(target, ignoreCase = true)) {
+        hashMatch.groupValues[1].lowercase(Locale.ROOT)
+    } else {
+        null
+    }
 }
 
 /** Decides whether the launch-time update popup should appear or stay snoozed after "Later". */
@@ -241,6 +298,8 @@ private fun buildUpdateRelease(
     if (!isAllowedDownloadUrl(apkUrl)) return null
     val notesAssetUrl = findAssetUrlByName(assets, RELEASE_NOTES_ASSET_NAME)
         ?.takeIf(::isAllowedDownloadUrl)
+    val checksumsAssetUrl = findAssetUrlByName(assets, SHA256SUMS_ASSET_NAME)
+        ?.takeIf(::isAllowedDownloadUrl)
     val digestRaw = apkAsset.optString("digest", "").trim()
     val expectedSha256 = SHA256_REGEX.matchEntire(digestRaw)?.groupValues?.get(1)?.lowercase(Locale.ROOT)
     val fallbackNotes = parseMarkdownBulletLines(root.optString("body", ""))
@@ -255,6 +314,7 @@ private fun buildUpdateRelease(
         notesPtBr = emptyList(),
         htmlUrl = root.optString("html_url", "").trim(),
         notesAssetUrl = notesAssetUrl,
+        checksumsAssetUrl = checksumsAssetUrl,
     )
 }
 
@@ -306,7 +366,8 @@ object AppUpdateService {
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(25, TimeUnit.SECONDS)
-        .followRedirects(true)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
 
     /** Queries GitHub Releases for the latest official release and optional bilingual notes asset. */
@@ -323,8 +384,64 @@ object AppUpdateService {
                 resp.body?.string().orEmpty()
             }
             val parsed = parseGitHubReleaseJson(bodyText, currentVersion) ?: return@runCatching null
-            enrichWithLocalizedNotes(parsed, currentVersion)
+            val withSha = enrichWithChecksums(parsed, currentVersion)
+            enrichWithLocalizedNotes(withSha, currentVersion)
         }
+    }
+
+    private fun executeWithValidatedRedirects(initialRequest: Request): okhttp3.Response {
+        var currentReq = initialRequest
+        repeat(MAX_REDIRECT_HOPS + 1) { hop ->
+            val resp = httpClient.newCall(currentReq).execute()
+            val isRedirect = resp.code == HTTP_REDIRECT_MOVED ||
+                resp.code == HTTP_REDIRECT_FOUND ||
+                resp.code == HTTP_REDIRECT_SEE_OTHER ||
+                resp.code == HTTP_REDIRECT_TEMP ||
+                resp.code == HTTP_REDIRECT_PERM
+            if (!isRedirect) return resp
+            val location = resp.header("Location")?.trim()
+            val resolved = location?.let { currentReq.url.resolve(it)?.toString() }
+            resp.close()
+            if (hop >= MAX_REDIRECT_HOPS || resolved == null || !isAllowedDownloadUrl(resolved)) {
+                throw SecurityException("Blocked redirect to untrusted download URL")
+            }
+            currentReq = currentReq.newBuilder().url(resolved).build()
+        }
+        throw SecurityException("Too many redirects")
+    }
+
+    private fun readBoundedBytes(stream: java.io.InputStream, maxBytes: Int): ByteArray? {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(4096)
+        var total = 0
+        while (true) {
+            val read = stream.read(buf)
+            if (read < 0) break
+            total += read
+            if (total > maxBytes) return null
+            out.write(buf, 0, read)
+        }
+        return out.toByteArray()
+    }
+
+    private fun enrichWithChecksums(release: AppUpdateRelease, currentVersion: String): AppUpdateRelease {
+        if (!release.expectedSha256.isNullOrBlank()) return release
+        val url = release.checksumsAssetUrl ?: return release
+        val sumsText = runCatching {
+            val req = Request.Builder()
+                .url(url)
+                .header("Accept", "text/plain")
+                .header("User-Agent", "NuvioDeskRemote-Android/$currentVersion")
+                .build()
+            executeWithValidatedRedirects(req).use { resp ->
+                if (!resp.isSuccessful) return@runCatching null
+                val stream = resp.body?.byteStream() ?: return@runCatching null
+                val bytes = readBoundedBytes(stream, MAX_NOTES_JSON_BYTES) ?: return@runCatching null
+                String(bytes, Charsets.UTF_8)
+            }
+        }.getOrNull() ?: return release
+        val resolvedSha = parseSha256Sums(sumsText, release.apkName) ?: return release
+        return release.copy(expectedSha256 = resolvedSha)
     }
 
     private fun enrichWithLocalizedNotes(release: AppUpdateRelease, currentVersion: String): AppUpdateRelease {
@@ -335,10 +452,10 @@ object AppUpdateService {
                 .header("Accept", "application/json")
                 .header("User-Agent", "NuvioDeskRemote-Android/$currentVersion")
                 .build()
-            httpClient.newCall(req).execute().use { resp ->
+            executeWithValidatedRedirects(req).use { resp ->
                 if (!resp.isSuccessful) return@runCatching null
-                val bytes = resp.body?.bytes() ?: return@runCatching null
-                if (bytes.size > MAX_NOTES_JSON_BYTES) return@runCatching null
+                val stream = resp.body?.byteStream() ?: return@runCatching null
+                val bytes = readBoundedBytes(stream, MAX_NOTES_JSON_BYTES) ?: return@runCatching null
                 String(bytes, Charsets.UTF_8)
             }
         }.getOrNull() ?: return release
@@ -349,14 +466,14 @@ object AppUpdateService {
         )
     }
 
-    /** Downloads the release APK into `cacheDir/updates/`, verifying SHA-256 when provided. */
+    /** Downloads the release APK into `cacheDir/updates/`, enforcing mandatory SHA-256 verification. */
     suspend fun downloadApk(
         context: Context,
         release: AppUpdateRelease,
         currentVersion: String,
         onProgress: (downloadedBytes: Long, totalBytes: Long) -> Unit,
     ): ApkDownloadOutcome = withContext(Dispatchers.IO) {
-        if (!isAllowedDownloadUrl(release.apkDownloadUrl)) {
+        if (!isAllowedDownloadUrl(release.apkDownloadUrl) || release.expectedSha256.isNullOrBlank()) {
             return@withContext ApkDownloadOutcome.Failure(UpdateErrorReason.INTEGRITY)
         }
         val updatesDir = File(context.cacheDir, "updates").apply { mkdirs() }
@@ -380,7 +497,7 @@ object AppUpdateService {
             .header("User-Agent", "NuvioDeskRemote-Android/$currentVersion")
             .build()
         return try {
-            httpClient.newCall(req).execute().use { resp ->
+            executeWithValidatedRedirects(req).use { resp ->
                 if (!resp.isSuccessful) return ApkDownloadOutcome.Failure(UpdateErrorReason.NETWORK)
                 val body = resp.body ?: return ApkDownloadOutcome.Failure(UpdateErrorReason.NETWORK)
                 val totalBytes = body.contentLength().takeIf { it > 0L } ?: release.apkSizeBytes
@@ -390,6 +507,9 @@ object AppUpdateService {
         } catch (ce: CancellationException) {
             partFile.delete()
             throw ce
+        } catch (_: SecurityException) {
+            partFile.delete()
+            ApkDownloadOutcome.Failure(UpdateErrorReason.INTEGRITY)
         } catch (io: IOException) {
             partFile.delete()
             val storageIssue = io.message?.contains("ENOSPC", ignoreCase = true) == true ||
@@ -434,21 +554,16 @@ object AppUpdateService {
         expectedSha256: String?,
         computedHex: String,
     ): ApkDownloadOutcome {
-        val verified = if (expectedSha256 != null) {
-            if (!expectedSha256.equals(computedHex, ignoreCase = true)) {
-                partFile.delete()
-                return ApkDownloadOutcome.Failure(UpdateErrorReason.INTEGRITY)
-            }
-            true
-        } else {
-            false
+        if (expectedSha256.isNullOrBlank() || !expectedSha256.equals(computedHex, ignoreCase = true)) {
+            partFile.delete()
+            return ApkDownloadOutcome.Failure(UpdateErrorReason.INTEGRITY)
         }
         if (finalFile.exists()) finalFile.delete()
         if (!partFile.renameTo(finalFile)) {
             partFile.delete()
             return ApkDownloadOutcome.Failure(UpdateErrorReason.STORAGE)
         }
-        return ApkDownloadOutcome.Success(file = finalFile, sha256Verified = verified)
+        return ApkDownloadOutcome.Success(file = finalFile, sha256Verified = true)
     }
 
     private fun pruneOldApks(updatesDir: File) {

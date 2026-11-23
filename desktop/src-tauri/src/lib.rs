@@ -2,6 +2,9 @@ mod updater;
 
 use qrcode::render::svg;
 use qrcode::QrCode;
+use sha2::{Digest, Sha256};
+use std::collections::hash_map::RandomState;
+use std::hash::{BuildHasher, Hasher};
 use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::Mutex;
@@ -17,6 +20,21 @@ use std::os::windows::process::CommandExt;
 pub(crate) const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 pub(crate) struct CompanionProcess(pub(crate) Mutex<Option<Child>>);
+pub(crate) struct LocalIpcToken(pub(crate) String);
+
+fn generate_local_ipc_token() -> String {
+    let mut hasher = Sha256::new();
+    for i in 0u64..8 {
+        let mut h = RandomState::new().build_hasher();
+        h.write_u64(i);
+        hasher.update(h.finish().to_le_bytes());
+    }
+    hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{:02x}", b))
+        .collect()
+}
 
 #[cfg(target_os = "windows")]
 fn strip_verbatim_prefix(path: PathBuf) -> PathBuf {
@@ -68,12 +86,13 @@ fn resolve_server_paths(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> 
     None
 }
 
-fn spawn_companion(app: &AppHandle) -> Option<Child> {
+fn spawn_companion(app: &AppHandle, ipc_token: &str) -> Option<Child> {
     let (node, entry, workdir) = resolve_server_paths(app)?;
     let mut cmd = Command::new(node);
     cmd.arg(entry)
         .current_dir(workdir)
-        .env("NUVIO_COMPANION_PARENT_PID", std::process::id().to_string());
+        .env("NUVIO_COMPANION_PARENT_PID", std::process::id().to_string())
+        .env("NUVIO_LOCAL_IPC_TOKEN", ipc_token);
     #[cfg(target_os = "windows")]
     {
         cmd.creation_flags(CREATE_NO_WINDOW);
@@ -113,7 +132,12 @@ fn render_qr_svg(payload: String) -> Result<String, String> {
 }
 
 #[tauri::command]
-fn companion_request(method: String, path: String, body: Option<String>) -> Result<String, String> {
+fn companion_request(
+    ipc_token: State<'_, LocalIpcToken>,
+    method: String,
+    path: String,
+    body: Option<String>,
+) -> Result<String, String> {
     if !path.starts_with('/') {
         return Err("Invalid request path".to_string());
     }
@@ -129,9 +153,12 @@ fn companion_request(method: String, path: String, body: Option<String>) -> Resu
             client
                 .post(&url)
                 .header("Content-Type", "application/json")
+                .header("X-Nuvio-Local-Token", &ipc_token.0)
                 .body(b)
         }
-        _ => client.get(&url),
+        _ => client
+            .get(&url)
+            .header("X-Nuvio-Local-Token", &ipc_token.0),
     };
 
     let resp = req.send().map_err(|e| e.to_string())?;
@@ -139,10 +166,14 @@ fn companion_request(method: String, path: String, body: Option<String>) -> Resu
 }
 
 #[tauri::command]
-fn restart_companion(app: AppHandle, state: State<'_, CompanionProcess>) -> Result<(), String> {
+fn restart_companion(
+    app: AppHandle,
+    state: State<'_, CompanionProcess>,
+    ipc_token: State<'_, LocalIpcToken>,
+) -> Result<(), String> {
     let mut guard = state.0.lock().map_err(|e| e.to_string())?;
     stop_companion_locked(&mut guard);
-    *guard = spawn_companion(&app);
+    *guard = spawn_companion(&app, &ipc_token.0);
     Ok(())
 }
 
@@ -240,18 +271,22 @@ pub fn run() {
         }));
     }
 
+    let ipc_token = generate_local_ipc_token();
+
     builder
         .plugin(tauri_plugin_dialog::init())
         .manage(CompanionProcess(Mutex::new(None)))
+        .manage(LocalIpcToken(ipc_token))
         .manage(updater::UpdateState::new())
         .setup(move |app| {
             let handle = app.handle().clone();
 
             // Launch the bundled Node.js Companion server hidden alongside the desktop app
             let companion_state = app.state::<CompanionProcess>();
+            let token_state = app.state::<LocalIpcToken>();
             let lock_res = companion_state.inner().0.lock();
             if let Ok(mut guard) = lock_res {
-                *guard = spawn_companion(&handle);
+                *guard = spawn_companion(&handle, &token_state.0);
             }
 
             if start_minimized {
@@ -275,10 +310,11 @@ pub fn run() {
                     "pair" => show_main_window(app, true),
                     "restart" => {
                         let companion_state = app.state::<CompanionProcess>();
+                        let token_state = app.state::<LocalIpcToken>();
                         let lock_res = companion_state.inner().0.lock();
                         if let Ok(mut guard) = lock_res {
                             stop_companion_locked(&mut guard);
-                            *guard = spawn_companion(app);
+                            *guard = spawn_companion(app, &token_state.0);
                         }
                     }
                     "quit" => {

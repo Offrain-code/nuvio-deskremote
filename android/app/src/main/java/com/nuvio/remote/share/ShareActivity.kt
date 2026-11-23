@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import com.nuvio.remote.MainActivity
+import com.nuvio.remote.connection.EndpointUrlResolver
 import com.nuvio.remote.data.AppPrefs
 import com.nuvio.remote.pairing.PairingManager
 import com.nuvio.remote.ui.i18n.ResolvedLanguage
@@ -58,12 +59,8 @@ class ShareActivity : Activity() {
     }
 
     private fun sendViaCompanion(host: String, token: String, url: String, lang: ResolvedLanguage): String {
-        val clean = host.removePrefix("wss://").removePrefix("ws://")
-            .removePrefix("https://").removePrefix("http://").trimEnd('/')
-        val isTunnel = host.contains(".trycloudflare.com", ignoreCase = true) ||
-            host.startsWith("https://", ignoreCase = true) ||
-            host.startsWith("wss://", ignoreCase = true)
-        val wsUrl = if (isTunnel) "wss://$clean?auth=$token" else "ws://$clean:8787?auth=$token"
+        val wsUrl = EndpointUrlResolver.buildWsUrl(host, 8787)
+            ?: return l10n(lang, "Invalid PC address configured.", "Endereço do computador inválido.")
 
         val client = OkHttpClient.Builder()
             .connectTimeout(4, TimeUnit.SECONDS)
@@ -74,10 +71,14 @@ class ShareActivity : Activity() {
             l10n(lang, "Could not reach the computer.", "Não foi possível alcançar o computador."),
         )
 
-        val request = Request.Builder()
-            .url(wsUrl)
-            .header("Authorization", "Bearer $token")
-            .build()
+        val request = runCatching {
+            Request.Builder()
+                .url(wsUrl)
+                .header("Authorization", "Bearer $token")
+                .build()
+        }.getOrElse {
+            return l10n(lang, "Invalid PC address configured.", "Endereço do computador inválido.")
+        }
 
         val ws = client.newWebSocket(
             request,
@@ -128,6 +129,19 @@ class ShareActivity : Activity() {
                             latch.countDown()
                         }
                     }
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    if (code == 1008) {
+                        resultRef.set(
+                            l10n(
+                                lang,
+                                "Device pairing expired or revoked. Pair again in Settings.",
+                                "Pareamento revogado ou expirado. Pareie novamente em Ajustes.",
+                            ),
+                        )
+                    }
+                    latch.countDown()
                 }
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {

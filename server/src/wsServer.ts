@@ -42,9 +42,14 @@ const SERVER_VERSION = '0.4.3';
 const DISCOVERY_UDP_PORT = 8766;
 const PAIRING_HTTP_PORT = 8765;
 const MOUSE_UDP_PORT = 8768;
+const MAX_WS_PAYLOAD_BYTES = 1024 * 1024; // 1 MiB
+const MAX_TYPE_TEXT_CHARS = 8192;
+const MAX_CLIPBOARD_BYTES = 128 * 1024; // 128 KiB
 
 interface SocketWithMeta extends ws.WebSocket {
   _id?: string;
+  _deviceId?: string;
+  _deviceName?: string;
   _isAlive?: boolean;
   _isTunnel?: boolean;
   _authed?: boolean;
@@ -62,6 +67,7 @@ export class CompanionServer {
   private injector: InputInjector;
   private pinManager: PinManager;
   private tokenStore: TokenStore;
+  private localIpcToken: string;
   private authorizedClientIps: Set<string> = new Set();
   private screen: ScreenServer;
   private logtail: NuvioLogTail | null;
@@ -85,12 +91,16 @@ export class CompanionServer {
     screen: ScreenServer;
     logtail: NuvioLogTail | null;
     bridge?: NuvioBridge | null;
+    tokenStore?: TokenStore;
+    pinManager?: PinManager;
+    localIpcToken?: string;
   }) {
     this.cfg = deps.cfg;
     this.state = deps.state;
     this.injector = deps.injector;
-    this.pinManager = new PinManager();
-    this.tokenStore = new TokenStore();
+    this.pinManager = deps.pinManager ?? new PinManager();
+    this.tokenStore = deps.tokenStore ?? new TokenStore();
+    this.localIpcToken = (deps.localIpcToken ?? process.env.NUVIO_LOCAL_IPC_TOKEN ?? '').trim();
     this.screen = deps.screen;
     this.logtail = deps.logtail;
     this.bridge = deps.bridge ?? null;
@@ -114,7 +124,7 @@ export class CompanionServer {
         monitor,
         detail,
       };
-      this.broadcast(msg);
+      this.broadcastAuthed(msg);
     });
     this.screen.setFrameCb((ownerId, jpg, width, height, monitor, directCursorEmbedded) => {
       // Binary frame: [0]=0x01 [1]=monitor [2..3]=w [4..5]=h [6..7]=cx*65535 [8..9]=cy*65535 [10]=visible [11]=needFallbackCursor + JPEG
@@ -192,6 +202,7 @@ export class CompanionServer {
           warn(`ws: client missed ping (${s._id ?? '?'}); terminating stale socket`);
           try { s.terminate(); } catch { /* ignore */ }
           this.sockets.delete(s);
+          this.rebuildAuthorizedClientIps();
           this.screen.stopIfOwner(socketId(s));
           continue;
         }
@@ -233,7 +244,7 @@ export class CompanionServer {
         source: ev.source,
         ts: new Date().toISOString(),
       };
-      this.broadcast(msg);
+      this.broadcastAuthed(msg);
     });
     this.logtail?.on('player_enter', (line: string) => this.state.applyLogEnter(truncate(line)));
     this.logtail?.on('player_exit', (line: string) => this.state.applyLogExit(truncate(line)));
@@ -357,7 +368,11 @@ export class CompanionServer {
 
   private serve(host: string, port: number, tag: string): ws.WebSocketServer {
     const httpSrv = http.createServer((req, res) => this.handleHttpRequest(req, res));
-    const wss = new ws.WebSocketServer({ server: httpSrv, perMessageDeflate: false });
+    const wss = new ws.WebSocketServer({
+      server: httpSrv,
+      perMessageDeflate: false,
+      maxPayload: MAX_WS_PAYLOAD_BYTES,
+    });
     wss.on('connection', (socket, req) => this.onConnection(socket as SocketWithMeta, req));
     wss.on('error', (err) => error(`ws[${tag}]: ${(err as Error).message}`));
     httpSrv.on('error', (err) => {
@@ -379,7 +394,11 @@ export class CompanionServer {
   private startPairingAndCompatServer(): void {
     try {
       const httpSrv = http.createServer((req, res) => this.handleHttpRequest(req, res));
-      const wss = new ws.WebSocketServer({ server: httpSrv, perMessageDeflate: false });
+      const wss = new ws.WebSocketServer({
+        server: httpSrv,
+        perMessageDeflate: false,
+        maxPayload: MAX_WS_PAYLOAD_BYTES,
+      });
       wss.on('connection', (socket, req) => this.onConnection(socket as SocketWithMeta, req));
       wss.on('error', (err) => warn(`ws[compat-8765]: ${(err as Error).message}`));
       httpSrv.on('error', (err) => warn(`http[compat-8765]: ${(err as Error).message}`));
@@ -393,23 +412,112 @@ export class CompanionServer {
     }
   }
 
-  private isRequestFromTunnel(req: http.IncomingMessage): boolean {
-    return Boolean(
-      req.headers['cf-connecting-ip'] ||
-      req.headers['cf-ray'] ||
-      (req.headers.host && req.headers.host.includes('.trycloudflare.com'))
-    );
+  /** Gracefully stops listeners, active WebSockets, timers, tunnel, and UDP sockets. */
+  stop(): void {
+    if (this.pingTimer) {
+      clearInterval(this.pingTimer);
+      this.pingTimer = null;
+    }
+    if (this.cursorWatchTimer) {
+      clearInterval(this.cursorWatchTimer);
+      this.cursorWatchTimer = null;
+    }
+    for (const s of this.sockets) {
+      if (s._authTimer) {
+        clearTimeout(s._authTimer);
+        s._authTimer = undefined;
+      }
+      try { s.close(1001, 'Server shutting down'); } catch { /* ignore */ }
+    }
+    this.sockets.clear();
+    this.authorizedClientIps.clear();
+    this.tunnel?.stop();
+    this.tunnel = null;
+    this.tunnelEnabled = false;
+    try { this.udpDiscovery?.close(); } catch { /* ignore */ }
+    this.udpDiscovery = null;
+    try { this.udpMouse?.close(); } catch { /* ignore */ }
+    this.udpMouse = null;
+    for (const wss of this.servers) {
+      try { wss.close(); } catch { /* ignore */ }
+    }
+    this.servers = [];
+    for (const srv of this.httpServers) {
+      try { srv.close(); } catch { /* ignore */ }
+    }
+    this.httpServers = [];
+  }
+
+  private hasValidLocalIpcAccess(req: http.IncomingMessage, rawSocketAddr: string): boolean {
+    if (!isLoopbackAddress(rawSocketAddr)) return false;
+    if (!isAllowedLocalHostHeader(req.headers.host)) return false;
+    if (this.localIpcToken) {
+      const provided = String(req.headers['x-nuvio-local-token'] ?? '').trim();
+      return timingSafeTokenEqual(provided, this.localIpcToken);
+    }
+    return true;
+  }
+
+  private getBearerDevice(req: http.IncomingMessage, remote: string) {
+    const auth = (req.headers['authorization'] ?? '').toString().replace(/^Bearer\s+/i, '').trim();
+    if (!auth) return null;
+    return this.tokenStore.validateToken(auth, remote);
+  }
+
+  private rebuildAuthorizedClientIps(): void {
+    this.authorizedClientIps.clear();
+    for (const s of this.sockets) {
+      if (s.readyState === ws.WebSocket.OPEN && s._authed && !s._isTunnel && s._remoteAddr) {
+        const cleanIp = s._remoteAddr.replace(/^::ffff:/, '').trim();
+        if (cleanIp && isPrivateOrLoopback(cleanIp)) {
+          this.authorizedClientIps.add(cleanIp);
+        }
+      }
+    }
+  }
+
+  private disconnectDeviceSockets(deviceId: string): number {
+    let closed = 0;
+    for (const s of Array.from(this.sockets)) {
+      if (s._deviceId === deviceId) {
+        s._authed = false;
+        s._wantsScreen = false;
+        if (s._authTimer) {
+          clearTimeout(s._authTimer);
+          s._authTimer = undefined;
+        }
+        this.screen.stopIfOwner(socketId(s));
+        this.reply(s, {
+          type: 'error',
+          code: 'DEVICE_REVOKED',
+          message: 'This device was revoked. Pair again using a 6-digit PIN.',
+        });
+        try { s.close(1008, 'Device revoked'); } catch { /* ignore */ }
+        this.sockets.delete(s);
+        closed += 1;
+      }
+    }
+    this.rebuildAuthorizedClientIps();
+    return closed;
   }
 
   private handleHttpRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const remote = (req.headers['cf-connecting-ip'] as string) ?? req.socket.remoteAddress ?? '';
-    const fromTunnel = this.isRequestFromTunnel(req);
-    const isLan = !fromTunnel && isPrivateOrLoopback(remote);
+    const rawSocketAddr = (req.socket.remoteAddress ?? '').trim();
+    const fromTunnel = isRequestFromTunnel(req);
+    const remote = resolveEffectiveRemote(req, this.tunnelEnabled);
+    const isLan = !fromTunnel && isPrivateOrLoopback(remote) && isPrivateOrLoopback(rawSocketAddr);
 
     // SECURITY: APK download and PIN pairing are NEVER exposed over the internet/tunnel — LAN Wi-Fi only!
     if (!isLan) {
       res.writeHead(403, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'LAN_ONLY', message: 'APK download and PIN pairing are allowed on the local network (LAN) only.' }));
+      return;
+    }
+
+    // SECURITY: Block DNS rebinding via arbitrary external Host headers.
+    if (!isAllowedLanHostHeader(req.headers.host)) {
+      res.writeHead(403, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'FORBIDDEN_HOST', message: 'Untrusted Host header is not allowed.' }));
       return;
     }
 
@@ -429,40 +537,65 @@ export class CompanionServer {
         path.resolve(__dirname, '..', '..', 'android', 'nuvio-remote-debug.apk'),
         path.resolve(__dirname, '..', 'bin', 'nuvio-deskremote.apk'),
       ].filter((p) => p.length > 0);
-      const apkPath = apkCandidates.find((p) => fs.existsSync(p));
-      if (apkPath) {
-        const stat = fs.statSync(apkPath);
-        res.writeHead(200, {
-          'Content-Type': 'application/vnd.android.package-archive',
-          'Content-Disposition': 'attachment; filename="nuvio-deskremote.apk"',
-          'Content-Length': stat.size,
-        });
-        if (req.method === 'HEAD') {
-          res.end();
-          return;
+      const apkPath = apkCandidates.find((p) => {
+        try {
+          return fs.existsSync(p) && fs.statSync(p).isFile();
+        } catch {
+          return false;
         }
-        fs.createReadStream(apkPath).pipe(res);
-        return;
+      });
+      if (apkPath) {
+        try {
+          const stat = fs.statSync(apkPath);
+          res.writeHead(200, {
+            'Content-Type': 'application/vnd.android.package-archive',
+            'Content-Disposition': 'attachment; filename="nuvio-deskremote.apk"',
+            'Content-Length': stat.size,
+          });
+          if (req.method === 'HEAD') {
+            res.end();
+            return;
+          }
+          const stream = fs.createReadStream(apkPath);
+          stream.on('error', (err) => {
+            warn(`http[/apk]: read error: ${err.message}`);
+            if (!res.headersSent) {
+              res.writeHead(500, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'APK_READ_ERROR' }));
+            } else {
+              res.destroy();
+            }
+          });
+          res.on('close', () => {
+            if (!stream.destroyed) stream.destroy();
+          });
+          stream.pipe(res);
+          return;
+        } catch (err) {
+          warn(`http[/apk]: stat error: ${(err as Error).message}`);
+        }
       }
     }
 
     if (req.method === 'GET' && (req.url === '/health' || req.url === '/api/v1/status')) {
       const bridgeSnap = this.bridge?.snapshot() ?? null;
+      const isLocalTrusted = this.hasValidLocalIpcAccess(req, rawSocketAddr);
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'ok',
         server: SERVER_NAME,
         version: SERVER_VERSION,
+        server_id: getServerId(),
         ip: pickLanIp(),
         ws_port: this.cfg.port,
         tunnel_enabled: this.tunnelEnabled,
-        tunnel_url: this.tunnel?.getUrl() ?? null,
+        tunnel_url: isLocalTrusted ? (this.tunnel?.getUrl() ?? null) : null,
         state: this.state.snapshot(),
         nuvio_bridge: bridgeSnap
           ? {
             status: bridgeSnap.status,
             pc_name: bridgeSnap.pcName,
-            playing: bridgeSnap.nowPlaying ? bridgeSnap.nowPlaying.title : null,
+            playing: isLocalTrusted && bridgeSnap.nowPlaying ? bridgeSnap.nowPlaying.title : null,
           }
           : null,
       }));
@@ -470,43 +603,34 @@ export class CompanionServer {
     }
 
     if (req.method === 'POST' && req.url === '/api/v1/tunnel') {
-      if (!this.isHttpAdminAuthorized(req, remote)) {
-        res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local loopback access required.' }));
+      if (!this.hasValidLocalIpcAccess(req, rawSocketAddr)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'LOOPBACK_ONLY', message: 'Tunnel toggle is restricted to the local Desktop Companion.' }));
         return;
       }
-      let body = '';
-      req.on('data', (chunk: Buffer) => {
-        if (body.length < 4096) body += chunk.toString('utf8');
-      });
-      req.on('end', () => {
+      readJsonBody(req, res, 4096, (parsedRaw) => {
+        const parsed = parsedRaw as { enabled?: boolean };
+        const enabled = Boolean(parsed.enabled);
+        this.setTunnelEnabled(enabled);
         try {
-          const parsed = JSON.parse(body || '{}') as { enabled?: boolean };
-          const enabled = Boolean(parsed.enabled);
-          this.setTunnelEnabled(enabled);
-          try {
-            saveUserConfig({ tunnel: { enabled } });
-          } catch (err) {
-            warn(`config: failed to save tunnel.enabled: ${(err as Error).message}`);
-          }
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            tunnel_enabled: this.tunnelEnabled,
-            tunnel_url: this.tunnel?.getUrl() ?? null,
-          }));
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'BAD_JSON' }));
+          saveUserConfig({ tunnel: { enabled } });
+        } catch (err) {
+          warn(`config: failed to save tunnel.enabled: ${(err as Error).message}`);
         }
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          tunnel_enabled: this.tunnelEnabled,
+          tunnel_url: this.tunnel?.getUrl() ?? null,
+        }));
       });
       return;
     }
 
-    // Local endpoints exclusively for the native desktop UI (STRICTLY loopback 127.0.0.1 / ::1)
+    // Local endpoints exclusively for the native desktop UI (STRICTLY loopback + local Host + IPC token)
     if (req.url?.startsWith('/api/v1/local/')) {
-      if (!isLoopbackAddress(remote)) {
+      if (!this.hasValidLocalIpcAccess(req, rawSocketAddr)) {
         res.writeHead(403, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'LOOPBACK_ONLY', message: 'Access restricted to the local machine.' }));
+        res.end(JSON.stringify({ error: 'LOOPBACK_ONLY', message: 'Access restricted to the local Desktop Companion.' }));
         return;
       }
       if (req.method === 'GET' && req.url.startsWith('/api/v1/local/pair-info')) {
@@ -527,7 +651,7 @@ export class CompanionServer {
           ws_port: this.cfg.port,
           qr_payload: qrPayload,
           connected_clients: connectedClients,
-          paired_devices: this.tokenStore.getDevices(),
+          paired_devices: this.tokenStore.getPublicDevices(),
         }));
         return;
       }
@@ -542,36 +666,32 @@ export class CompanionServer {
         return;
       }
       if (req.method === 'POST' && req.url === '/api/v1/local/config') {
-        let body = '';
-        req.on('data', (chunk: Buffer) => {
-          if (body.length < 8192) body += chunk.toString('utf8');
-        });
-        req.on('end', () => {
-          try {
-            const parsed = JSON.parse(body || '{}') as { nuvio_exe_path?: string | null; tunnel_enabled?: boolean };
-            const patch: { nuvioExePath?: string | null; tunnel?: { enabled?: boolean } } = {};
-            if (parsed.nuvio_exe_path !== undefined) {
-              const cleanPath = parsed.nuvio_exe_path ? String(parsed.nuvio_exe_path).trim() : null;
-              this.cfg.nuvioExePath = cleanPath || null;
-              this.injector.setNuvioExePath(this.cfg.nuvioExePath);
-              patch.nuvioExePath = this.cfg.nuvioExePath;
+        readJsonBody(req, res, 8192, (parsedRaw) => {
+          const parsed = parsedRaw as { nuvio_exe_path?: string | null; tunnel_enabled?: boolean };
+          const patch: { nuvioExePath?: string | null; tunnel?: { enabled?: boolean } } = {};
+          if (parsed.nuvio_exe_path !== undefined) {
+            const check = validateNuvioExePath(parsed.nuvio_exe_path);
+            if (!check.ok) {
+              res.writeHead(400, { 'Content-Type': 'application/json' });
+              res.end(JSON.stringify({ error: 'INVALID_NUVIO_PATH', message: check.error }));
+              return;
             }
-            if (typeof parsed.tunnel_enabled === 'boolean') {
-              this.setTunnelEnabled(parsed.tunnel_enabled);
-              patch.tunnel = { enabled: parsed.tunnel_enabled };
-            }
-            saveUserConfig(patch);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({
-              nuvio_exe_path: this.cfg.nuvioExePath,
-              detected_nuvio_exe_path: this.injector.resolveNuvioExePath(),
-              tunnel_enabled: this.tunnelEnabled,
-              tunnel_url: this.tunnel?.getUrl() ?? null,
-            }));
-          } catch {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'BAD_JSON' }));
+            this.cfg.nuvioExePath = check.normalized;
+            this.injector.setNuvioExePath(this.cfg.nuvioExePath);
+            patch.nuvioExePath = this.cfg.nuvioExePath;
           }
+          if (typeof parsed.tunnel_enabled === 'boolean') {
+            this.setTunnelEnabled(parsed.tunnel_enabled);
+            patch.tunnel = { enabled: parsed.tunnel_enabled };
+          }
+          saveUserConfig(patch);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            nuvio_exe_path: this.cfg.nuvioExePath,
+            detected_nuvio_exe_path: this.injector.resolveNuvioExePath(),
+            tunnel_enabled: this.tunnelEnabled,
+            tunnel_url: this.tunnel?.getUrl() ?? null,
+          }));
         });
         return;
       }
@@ -594,123 +714,132 @@ export class CompanionServer {
     }
 
     if (req.method === 'GET' && req.url === '/api/v1/devices') {
-      if (!this.isHttpAdminAuthorized(req, remote)) {
+      const isLocalAdmin = this.hasValidLocalIpcAccess(req, rawSocketAddr);
+      const bearerDev = !isLocalAdmin ? this.getBearerDevice(req, remote) : null;
+      if (!isLocalAdmin && !bearerDev) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local loopback access required.' }));
+        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local Desktop access required.' }));
         return;
       }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
-        devices: this.tokenStore.getDevices(),
+        devices: this.tokenStore.getPublicDevices(),
       }));
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/v1/pair/request') {
-      const pinInfo = this.pinManager.generatePin();
+      const pinReq = this.pinManager.requestPin(remote, false);
+      if (!pinReq.ok) {
+        res.writeHead(429, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          error: 'RATE_LIMIT_EXCEEDED',
+          message: pinReq.message,
+          retry_after_seconds: pinReq.retryAfterSeconds ?? 60,
+        }));
+        return;
+      }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({
         status: 'pin_displayed',
-        expires_in_seconds: pinInfo.expiresInSeconds,
+        expires_in_seconds: pinReq.expiresInSeconds ?? 120,
       }));
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/v1/pair') {
-      let body = '';
-      req.on('data', (chunk: Buffer) => {
-        if (body.length < 8192) body += chunk.toString('utf8');
-      });
-      req.on('end', () => {
-        try {
-          const parsed = JSON.parse(body || '{}') as { device_id?: string; device_name?: string; pin?: string };
-          const pin = String(parsed.pin ?? '').trim();
-          if (!/^\d{6}$/.test(pin)) {
-            res.writeHead(401, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'INVALID_PIN', message: 'PIN must contain exactly 6 numeric digits.' }));
-            return;
-          }
-          const v = this.pinManager.verifyPin(remote, pin);
-          if (!v.ok) {
-            if (v.error === 'RATE_LIMIT_EXCEEDED') {
-              res.writeHead(429, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                error: 'RATE_LIMIT_EXCEEDED',
-                message: v.message,
-                retry_after_seconds: v.retryAfterSeconds ?? 300,
-              }));
-              return;
-            }
-            if (v.error === 'INVALID_PIN') {
-              res.writeHead(401, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({
-                error: 'INVALID_PIN',
-                message: v.message,
-                attempts_remaining: v.attemptsRemaining ?? 0,
-              }));
-              return;
-            }
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: v.error ?? 'PAIR_FAILED', message: v.message }));
-            return;
-          }
-
-          const devId = (parsed.device_id || crypto.randomUUID()).slice(0, 64);
-          const devName = (parsed.device_name || 'Android Device').slice(0, 40);
-          const token = this.tokenStore.createDeviceToken(devId, devName, remote);
-          const cleanIp = remote.replace(/^::ffff:/, '');
-          this.authorizedClientIps.add(cleanIp);
-          info(`[AUTH] Device paired successfully: "${devName}" (${devId}) from ${remote}`);
-
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({
-            status: 'paired',
-            server_id: `srv-${os.hostname()}`,
-            device_id: devId,
-            token,
-            expires_at: null,
-          }));
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'BAD_JSON' }));
+      readJsonBody(req, res, 8192, (parsedRaw) => {
+        const parsed = parsedRaw as { device_id?: string; device_name?: string; pin?: string };
+        const pin = String(parsed.pin ?? '').trim();
+        if (!/^\d{6}$/.test(pin)) {
+          res.writeHead(401, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'INVALID_PIN', message: 'PIN must contain exactly 6 numeric digits.' }));
+          return;
         }
+        const v = this.pinManager.verifyPin(remote, pin);
+        if (!v.ok) {
+          if (v.error === 'RATE_LIMIT_EXCEEDED') {
+            res.writeHead(429, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'RATE_LIMIT_EXCEEDED',
+              message: v.message,
+              retry_after_seconds: v.retryAfterSeconds ?? 300,
+            }));
+            return;
+          }
+          if (v.error === 'INVALID_PIN') {
+            res.writeHead(401, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({
+              error: 'INVALID_PIN',
+              message: v.message,
+              attempts_remaining: v.attemptsRemaining ?? 0,
+            }));
+            return;
+          }
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: v.error ?? 'PAIR_FAILED', message: v.message }));
+          return;
+        }
+
+        const devId = (typeof parsed.device_id === 'string' && parsed.device_id.trim()
+          ? parsed.device_id.trim()
+          : crypto.randomUUID()
+        ).slice(0, 64);
+        const devName = (typeof parsed.device_name === 'string' && parsed.device_name.trim()
+          ? parsed.device_name.trim()
+          : 'Android Device'
+        ).slice(0, 40);
+        const token = this.tokenStore.createDeviceToken(devId, devName, remote);
+        info(`[AUTH] Device paired successfully: "${devName}" (${devId}) from ${remote}`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          status: 'paired',
+          server_id: getServerId(),
+          device_id: devId,
+          token,
+          expires_at: null,
+        }));
       });
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/v1/devices/revoke') {
-      if (!this.isHttpAdminAuthorized(req, remote)) {
+      const isLocalAdmin = this.hasValidLocalIpcAccess(req, rawSocketAddr);
+      const bearerDev = !isLocalAdmin ? this.getBearerDevice(req, remote) : null;
+      if (!isLocalAdmin && !bearerDev) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local loopback access required.' }));
+        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local Desktop access required.' }));
         return;
       }
-      let body = '';
-      req.on('data', (chunk: Buffer) => {
-        if (body.length < 8192) body += chunk.toString('utf8');
-      });
-      req.on('end', () => {
-        try {
-          const parsed = JSON.parse(body || '{}') as { device_id?: string };
-          if (parsed.device_id) {
-            this.tokenStore.revokeDevice(parsed.device_id);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ status: 'revoked', device_id: parsed.device_id }));
-            return;
-          }
+      readJsonBody(req, res, 8192, (parsedRaw) => {
+        const parsed = parsedRaw as { device_id?: string };
+        const targetDeviceId = typeof parsed.device_id === 'string' ? parsed.device_id.trim() : '';
+        if (!targetDeviceId) {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'MISSING_DEVICE_ID' }));
-        } catch {
-          res.writeHead(400, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'BAD_JSON' }));
+          return;
         }
+        if (!isLocalAdmin && bearerDev && bearerDev.deviceId !== targetDeviceId) {
+          res.writeHead(403, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'FORBIDDEN', message: 'Paired devices can only revoke their own session.' }));
+          return;
+        }
+        this.tokenStore.revokeDevice(targetDeviceId);
+        const disconnected = this.disconnectDeviceSockets(targetDeviceId);
+        info(`[AUTH] Revoked device ${targetDeviceId} (closed ${disconnected} active WebSocket session(s))`);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ status: 'revoked', device_id: targetDeviceId, disconnected_sessions: disconnected }));
       });
       return;
     }
 
     if (req.method === 'POST' && req.url === '/api/v1/nuvio-bridge/pair') {
-      if (!this.isHttpAdminAuthorized(req, remote)) {
+      const isLocalAdmin = this.hasValidLocalIpcAccess(req, rawSocketAddr);
+      const bearerDev = !isLocalAdmin ? this.getBearerDevice(req, remote) : null;
+      if (!isLocalAdmin && !bearerDev) {
         res.writeHead(401, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local loopback access required.' }));
+        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Bearer token or local Desktop access required.' }));
         return;
       }
       if (!this.bridge) {
@@ -718,27 +847,18 @@ export class CompanionServer {
         res.end(JSON.stringify({ error: 'BRIDGE_DISABLED', message: 'Native Nuvio bridge is unavailable.' }));
         return;
       }
-      let body = '';
-      req.on('data', (chunk: Buffer) => {
-        if (body.length < 4096) body += chunk.toString('utf8');
-      });
-      req.on('end', () => {
+      readJsonBody(req, res, 4096, (parsedRaw) => {
         void (async () => {
-          try {
-            const parsed = JSON.parse(body || '{}') as { pin?: string };
-            const result = await this.bridge!.pair(String(parsed.pin ?? ''));
-            if (result.ok) {
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(JSON.stringify({ status: 'paired', pc_name: result.pcName }));
-              return;
-            }
-            const statusCode = result.error === 'LOCKED' ? 429 : result.error === 'UNAVAILABLE' ? 503 : 400;
-            res.writeHead(statusCode, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: result.error }));
-          } catch {
-            res.writeHead(400, { 'Content-Type': 'application/json' });
-            res.end(JSON.stringify({ error: 'BAD_JSON' }));
+          const parsed = parsedRaw as { pin?: string };
+          const result = await this.bridge!.pair(String(parsed.pin ?? ''));
+          if (result.ok) {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ status: 'paired', pc_name: result.pcName }));
+            return;
           }
+          const statusCode = result.error === 'LOCKED' ? 429 : result.error === 'UNAVAILABLE' ? 503 : 400;
+          res.writeHead(statusCode, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: result.error }));
         })();
       });
       return;
@@ -759,6 +879,7 @@ export class CompanionServer {
         if (!text.includes('DISCOVER')) return;
         const payload = JSON.stringify({
           status: 'FOUND',
+          server_id: getServerId(),
           server_name: os.hostname() || 'Nuvio-PC',
           ip: pickLanIp(),
           port: this.cfg.port,
@@ -783,7 +904,7 @@ export class CompanionServer {
       if (!this.tunnel) {
         this.tunnel = new TunnelManager(this.cfg.port, (url) => {
           info(`tunnel: active remote URL = ${url}`);
-          this.broadcast({ type: 'tunnel', url });
+          this.broadcastAuthed({ type: 'tunnel', url });
         });
         this.tunnel.start();
       }
@@ -791,7 +912,7 @@ export class CompanionServer {
       this.tunnel.stop();
       this.tunnel = null;
       info('tunnel: Remote Access disabled');
-      this.broadcast({ type: 'tunnel', url: '' });
+      this.broadcastAuthed({ type: 'tunnel', url: '' });
     }
   }
 
@@ -880,14 +1001,6 @@ export class CompanionServer {
     );
   }
 
-  private isHttpAdminAuthorized(req: http.IncomingMessage, remote: string): boolean {
-    const clean = remote.replace(/^::ffff:/, '');
-    if (clean === '127.0.0.1' || clean === '::1') return true;
-    const auth = (req.headers['authorization'] ?? '').toString().replace(/^Bearer\s+/i, '').trim();
-    if (!auth) return false;
-    return this.tokenStore.validateToken(auth, remote) !== null;
-  }
-
   private sendCursorPacket(socket: SocketWithMeta, force = false): void {
     if (!this.screen.isRunning() || socket.readyState !== ws.WebSocket.OPEN) return;
     if (!force) {
@@ -926,10 +1039,10 @@ export class CompanionServer {
   }
 
   private onConnection(socket: SocketWithMeta, req: http.IncomingMessage): void {
-    const remoteAddr = (req.headers['cf-connecting-ip'] as string) ?? req.socket.remoteAddress ?? '?';
-    const fromTunnel = this.isRequestFromTunnel(req);
-    const isLan = !fromTunnel && isPrivateOrLoopback(remoteAddr);
-    const cleanIp = remoteAddr.replace(/^::ffff:/, '');
+    const rawSocketAddr = (req.socket.remoteAddress ?? '').trim();
+    const fromTunnel = isRequestFromTunnel(req);
+    const remoteAddr = resolveEffectiveRemote(req, this.tunnelEnabled);
+    const isLan = !fromTunnel && isPrivateOrLoopback(remoteAddr) && isPrivateOrLoopback(rawSocketAddr);
 
     let queryAuth = '';
     try {
@@ -947,18 +1060,18 @@ export class CompanionServer {
     this.nextSocketId += 1;
     const id = `ws-${Date.now()}-${this.nextSocketId}`;
     socket._id = id;
+    socket._deviceId = pairedDev?.deviceId;
+    socket._deviceName = pairedDev?.deviceName;
     socket._isAlive = true;
     socket._isTunnel = !isLan;
     socket._authed = isAuthed;
-    socket._remoteAddr = remoteAddr;
+    socket._remoteAddr = remoteAddr || '?';
 
-    if (isAuthed) {
-      this.authorizedClientIps.add(cleanIp);
-    } else {
+    if (!isAuthed) {
       // SECURITY §4.3: Unauthenticated sockets have 3 seconds to authenticate via hello or AUTH
       socket._authTimer = setTimeout(() => {
         if (!socket._authed && socket.readyState === ws.WebSocket.OPEN) {
-          warn(`ws: client ${remoteAddr} (${id}) disconnected for not authenticating within 3s`);
+          warn(`ws: client ${socket._remoteAddr} (${id}) disconnected for not authenticating within 3s`);
           this.reply(socket, { type: 'error', code: 'AUTH_TIMEOUT', message: 'Authentication deadline expired (SECURITY.md §4.3).' });
           try { socket.close(1008, 'Auth timeout'); } catch { /* ignore */ }
         }
@@ -971,8 +1084,11 @@ export class CompanionServer {
     rawSock?.setKeepAlive?.(true, 10000);
     rawSock?.setNoDelay?.(true);
 
-    info(`ws: connection from ${remoteAddr} (${id}) tunnel=${!isLan} preAuthed=${isAuthed}`);
+    info(`ws: connection from ${socket._remoteAddr} (${id}) tunnel=${!isLan} preAuthed=${isAuthed}`);
     this.sockets.add(socket);
+    if (isAuthed) {
+      this.rebuildAuthorizedClientIps();
+    }
 
     socket.on('pong', () => {
       socket._isAlive = true;
@@ -985,27 +1101,17 @@ export class CompanionServer {
       }
       socket._wantsScreen = false;
       this.sockets.delete(socket);
-      // Remove IP from authorizedClientIps if no other authenticated socket from this IP remains open
-      let hasOther = false;
-      for (const s of this.sockets) {
-        if (s._remoteAddr?.replace(/^::ffff:/, '') === cleanIp && s._authed) {
-          hasOther = true;
-          break;
-        }
-      }
-      if (!hasOther) {
-        this.authorizedClientIps.delete(cleanIp);
-      }
+      this.rebuildAuthorizedClientIps();
       this.screen.stopIfOwner(id);
     };
 
     socket.on('close', (code, reason) => {
-      info(`ws: disconnected ${remoteAddr} (${id}) code=${code} reason=${reason?.toString() || '-'}`);
+      info(`ws: disconnected ${socket._remoteAddr} (${id}) code=${code} reason=${reason?.toString() || '-'}`);
       cleanupSocket();
     });
 
     socket.on('error', (err) => {
-      warn(`ws: error on ${remoteAddr} (${id}): ${(err as Error).message}`);
+      warn(`ws: error on ${socket._remoteAddr} (${id}): ${(err as Error).message}`);
       cleanupSocket();
     });
 
@@ -1057,26 +1163,31 @@ export class CompanionServer {
       case 'hello': {
         const clientToken = (msg.type === 'AUTH' ? msg.token : msg.auth ?? '').trim();
         const remote = socket._remoteAddr ?? socketAddr(socket);
-        const cleanIp = remote.replace(/^::ffff:/, '');
 
-        let dev = socket._authed ? { deviceId: 'session', deviceName: 'Paired Client' } : null;
+        let dev = socket._authed && socket._deviceId ? this.tokenStore.getDevice(socket._deviceId) : null;
         if (!dev && clientToken) {
           dev = this.tokenStore.validateToken(clientToken, remote);
         }
 
         if (!dev) {
           warn(`ws: authentication rejected for ${remote} (${socket._id}) - invalid or missing token`);
+          socket._authed = false;
+          socket._deviceId = undefined;
+          socket._deviceName = undefined;
+          this.rebuildAuthorizedClientIps();
           this.reply(socket, { type: 'error', code: 'AUTH_FAILED', message: 'Access denied: unpaired device or invalid token. Pair using a 6-digit PIN first.' });
           socket.close(1008, 'Unauthorized');
           return;
         }
 
         socket._authed = true;
+        socket._deviceId = dev.deviceId;
+        socket._deviceName = dev.deviceName;
         if (socket._authTimer) {
           clearTimeout(socket._authTimer);
           socket._authTimer = undefined;
         }
-        this.authorizedClientIps.add(cleanIp);
+        this.rebuildAuthorizedClientIps();
         info(`ws: client authenticated successfully: "${dev.deviceName}" (${dev.deviceId}) from ${remote}`);
 
         const caps = ['nav', 'key', 'type', 'mouse', 'mouse_abs', 'state', 'screen_stream', 'screen_audio', 'multi_monitor', 'log_tail', 'window', 'webrtc_candidate', 'remote_tunnel', 'clipboard', 'nuvio_bridge'];
@@ -1091,7 +1202,6 @@ export class CompanionServer {
           capabilities: caps,
           monitors,
           tunnelUrl: this.tunnel?.getUrl() ?? null,
-          pairedToken: clientToken || undefined,
         };
         this.reply(socket, msgOut);
         if (this.bridge) {
@@ -1143,6 +1253,14 @@ export class CompanionServer {
         return;
       }
       case 'type': {
+        if (typeof msg.text !== 'string') {
+          this.reply(socket, { type: 'error', code: 'BAD_PAYLOAD', message: 'type text must be a string' });
+          return;
+        }
+        if (msg.text.length > MAX_TYPE_TEXT_CHARS) {
+          this.reply(socket, { type: 'error', code: 'PAYLOAD_TOO_LARGE', message: `type text exceeds ${MAX_TYPE_TEXT_CHARS} characters` });
+          return;
+        }
         const outcome = await this.injector.typeText(msg.text, true);
         if (!outcome.ok) this.reply(socket, { type: 'error', code: outcome.code, message: outcome.message });
         return;
@@ -1264,6 +1382,10 @@ export class CompanionServer {
       }
       case 'clipboard_set': {
         const text = typeof msg.text === 'string' ? msg.text : '';
+        if (Buffer.byteLength(text, 'utf8') > MAX_CLIPBOARD_BYTES) {
+          this.reply(socket, { type: 'error', code: 'PAYLOAD_TOO_LARGE', message: 'Clipboard payload exceeds 128 KiB limit.' });
+          return;
+        }
         await setWindowsClipboard(text);
         return;
       }
@@ -1345,9 +1467,14 @@ export class CompanionServer {
       case 'nuvio_queue':
         this.bridge?.requestQueue();
         return;
-      case 'nuvio_queue_action':
-        this.bridge?.queueAction(msg.action, msg.videoId);
+      case 'nuvio_queue_action': {
+        if (msg.action !== 'play' && msg.action !== 'next' && msg.action !== 'remove') {
+          this.reply(socket, { type: 'error', code: 'BAD_PAYLOAD', message: 'Invalid queue action' });
+          return;
+        }
+        this.bridge?.queueAction(msg.action, String(msg.videoId ?? ''));
         return;
+      }
       case 'nuvio_open': {
         const res = this.bridge ? await this.bridge.openLink(String(msg.url ?? '')) : { ok: false };
         this.reply(socket, { type: 'nuvio_open_result', ok: res.ok, what: res.what });
@@ -1402,19 +1529,23 @@ export class CompanionServer {
         this.reply(socket, { type: 'nuvio_open_result', ok: res.ok, what: res.what });
         return;
       }
-      case 'nuvio_menu':
-        this.bridge?.requestMenu(String(msg.kind ?? ''), String(msg.contentType ?? ''), String(msg.id ?? ''), msg.ref);
+      case 'nuvio_menu': {
+        const ref = typeof msg.ref === 'string' ? msg.ref : undefined;
+        this.bridge?.requestMenu(String(msg.kind ?? ''), String(msg.contentType ?? ''), String(msg.id ?? ''), ref);
         return;
-      case 'nuvio_do':
+      }
+      case 'nuvio_do': {
+        const ref = typeof msg.ref === 'string' ? msg.ref : undefined;
         this.bridge?.doMenuAction(
           String(msg.kind ?? ''),
           String(msg.contentType ?? ''),
           String(msg.id ?? ''),
           String(msg.code ?? ''),
-          msg.ref,
+          ref,
           Array.isArray(msg.args) ? msg.args.map(String) : [],
         );
         return;
+      }
       case 'nuvio_lyrics':
         this.bridge?.requestLyrics();
         return;
@@ -1433,19 +1564,133 @@ export class CompanionServer {
     if (socket.readyState === ws.WebSocket.OPEN) socket.send(JSON.stringify(msg));
   }
 
-  private broadcast(msg: ServerMessage): void {
-    const data = JSON.stringify(msg);
-    for (const s of this.sockets) {
-      if (s.readyState === ws.WebSocket.OPEN) s.send(data);
-    }
-  }
-
   private broadcastAuthed(msg: ServerMessage): void {
     const data = JSON.stringify(msg);
     for (const s of this.sockets) {
       if (s.readyState === ws.WebSocket.OPEN && s._authed) s.send(data);
     }
   }
+}
+
+export function getServerId(): string {
+  return `srv-${os.hostname()}`;
+}
+
+export function timingSafeTokenEqual(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const bufA = Buffer.from(a, 'utf8');
+  const bufB = Buffer.from(b, 'utf8');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
+}
+
+export function isRequestFromTunnel(req: http.IncomingMessage): boolean {
+  const host = typeof req.headers.host === 'string' ? req.headers.host.toLowerCase() : '';
+  return (
+    'cf-connecting-ip' in req.headers ||
+    'cf-ray' in req.headers ||
+    host.includes('.trycloudflare.com')
+  );
+}
+
+export function resolveEffectiveRemote(req: http.IncomingMessage, tunnelEnabled: boolean): string {
+  const socketAddrRaw = (req.socket.remoteAddress ?? '').trim();
+  if (tunnelEnabled && isLoopbackAddress(socketAddrRaw)) {
+    const cfHeader = req.headers['cf-connecting-ip'];
+    const cfIp = Array.isArray(cfHeader) ? (cfHeader[0] ?? '').trim() : String(cfHeader ?? '').trim();
+    if (cfIp.length > 0) {
+      return cfIp;
+    }
+  }
+  return socketAddrRaw;
+}
+
+function extractHostWithoutPort(hostHeader: string): string {
+  const trimmed = hostHeader.trim().toLowerCase();
+  if (trimmed.startsWith('[')) {
+    const end = trimmed.indexOf(']');
+    return end > 1 ? trimmed.slice(1, end) : '';
+  }
+  const colonIdx = trimmed.indexOf(':');
+  return colonIdx >= 0 ? trimmed.slice(0, colonIdx) : trimmed;
+}
+
+export function isAllowedLocalHostHeader(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return false;
+  const host = extractHostWithoutPort(hostHeader);
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
+export function isAllowedLanHostHeader(hostHeader: string | undefined): boolean {
+  if (!hostHeader) return true;
+  const host = extractHostWithoutPort(hostHeader);
+  if (!host) return false;
+  if (host === 'localhost' || isPrivateOrLoopback(host)) return true;
+  if (host.endsWith('.local') && /^[a-z0-9.-]+$/.test(host)) return true;
+  if (host === os.hostname().toLowerCase()) return true;
+  return false;
+}
+
+export function validateNuvioExePath(rawPath: string | null): { ok: boolean; normalized: string | null; error?: string } {
+  if (rawPath === null || rawPath === undefined) return { ok: true, normalized: null };
+  const clean = String(rawPath).trim();
+  if (!clean) return { ok: true, normalized: null };
+  if (/[\r\n\0]/.test(clean) || clean.length > 512) {
+    return { ok: false, normalized: null, error: 'Invalid executable path format.' };
+  }
+  const base = path.win32.basename(clean).toLowerCase();
+  if (!base.endsWith('.exe') || !base.includes('nuvio')) {
+    return { ok: false, normalized: null, error: 'Path must point to a Nuvio .exe executable.' };
+  }
+  try {
+    if (!fs.existsSync(clean) || !fs.statSync(clean).isFile()) {
+      return { ok: false, normalized: null, error: 'Selected Nuvio executable was not found on disk.' };
+    }
+  } catch {
+    return { ok: false, normalized: null, error: 'Could not verify selected Nuvio executable.' };
+  }
+  return { ok: true, normalized: clean };
+}
+
+function readJsonBody(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  maxBytes: number,
+  onParsed: (parsed: unknown) => void,
+): void {
+  const chunks: Buffer[] = [];
+  let totalBytes = 0;
+  let aborted = false;
+
+  req.on('data', (chunk: Buffer) => {
+    if (aborted) return;
+    totalBytes += chunk.length;
+    if (totalBytes > maxBytes) {
+      aborted = true;
+      res.writeHead(413, { 'Content-Type': 'application/json', Connection: 'close' });
+      res.end(
+        JSON.stringify({ error: 'PAYLOAD_TOO_LARGE', message: `Request body exceeds ${maxBytes} bytes.` }),
+        () => {
+          req.socket?.destroy();
+        },
+      );
+      req.pause();
+      return;
+    }
+    chunks.push(chunk);
+  });
+
+  req.on('end', () => {
+    if (aborted) return;
+    const raw = Buffer.concat(chunks).toString('utf8');
+    try {
+      const parsed = JSON.parse(raw || '{}');
+      onParsed(parsed);
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'BAD_JSON' }));
+    }
+  });
 }
 
 function socketId(socket: SocketWithMeta): string {
@@ -1482,17 +1727,26 @@ export function pickLanIp(): string {
   return fallback;
 }
 
-function isLoopbackAddress(addr: string): boolean {
+export function isLoopbackAddress(addr: string): boolean {
   const clean = addr.replace(/^::ffff:/, '').trim();
   return clean === '127.0.0.1' || clean === '::1';
 }
 
-function isPrivateOrLoopback(addr: string): boolean {
-  if (!addr || addr === '?' || addr === '127.0.0.1' || addr === '::1' || addr === '::ffff:127.0.0.1') return true;
-  const clean = addr.replace(/^::ffff:/, '');
-  if (clean.startsWith('192.168.') || clean.startsWith('10.') || clean.startsWith('169.254.')) return true;
-  if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(clean)) return true;
-  if (clean.toLowerCase().startsWith('fe80:')) return true;
+export function isPrivateOrLoopback(addr: string): boolean {
+  if (!addr) return false;
+  const trimmed = addr.trim();
+  if (!trimmed || trimmed === '?') return false;
+  if (trimmed === '127.0.0.1' || trimmed === '::1' || trimmed === '::ffff:127.0.0.1') return true;
+  const clean = trimmed.replace(/^::ffff:/, '');
+  if (clean === '127.0.0.1') return true;
+  if (/^192\.168\.(\d{1,3})\.(\d{1,3})$/.test(clean) || /^10\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.test(clean) || /^169\.254\.(\d{1,3})\.(\d{1,3})$/.test(clean)) {
+    return clean.split('.').every((oct) => Number(oct) >= 0 && Number(oct) <= 255);
+  }
+  if (/^172\.(1[6-9]|2\d|3[0-1])\.(\d{1,3})\.(\d{1,3})$/.test(clean)) {
+    return clean.split('.').every((oct) => Number(oct) >= 0 && Number(oct) <= 255);
+  }
+  const lower = clean.toLowerCase();
+  if (lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) return true;
   return false;
 }
 
@@ -1540,7 +1794,9 @@ function getWindowsClipboard(): Promise<string> {
         resolve(out);
       }, 2500);
       ps.stdout?.on('data', (chunk: Buffer) => {
-        out += chunk.toString('utf8');
+        if (Buffer.byteLength(out, 'utf8') < MAX_CLIPBOARD_BYTES) {
+          out += chunk.toString('utf8');
+        }
       });
       ps.on('close', () => {
         clearTimeout(timer);

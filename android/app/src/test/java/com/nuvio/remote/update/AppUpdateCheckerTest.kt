@@ -14,20 +14,42 @@ class AppUpdateCheckerTest {
         assertTrue(isNewerVersion("0.4.3", "0.5.0"))
         assertTrue(isNewerVersion("v0.4.3", "v0.10.0"))
         assertTrue(isNewerVersion("0.5.0-rc1", "0.5.0"))
+        assertTrue(isNewerVersion("0.5.0-rc.2", "0.5.0-rc.10"))
+        assertFalse(isNewerVersion("0.5.0-rc.10", "0.5.0-rc.2"))
         assertFalse(isNewerVersion("0.5.0", "0.5.0"))
         assertFalse(isNewerVersion("0.5.1", "0.5.0"))
         assertFalse(isNewerVersion("0.5.0", "0.5.0-beta.1"))
     }
 
     @Test
-    fun `download url allowlist blocks http and untrusted hosts`() {
+    fun `download url allowlist enforces official repo path and GitHub release CDNs`() {
         val validGh = "https://github.com/Offrain-code/nuvio-deskremote/releases/download/v0.5.0/app.apk"
         val httpGh = "http://github.com/Offrain-code/nuvio-deskremote/releases/download/v0.5.0/app.apk"
         assertTrue(isAllowedDownloadUrl(validGh))
         assertTrue(isAllowedDownloadUrl("https://objects.githubusercontent.com/github-production-release-asset/123"))
+        assertTrue(
+            isAllowedDownloadUrl("https://release-assets.githubusercontent.com/github-production-release-asset/123"),
+        )
+        assertFalse(isAllowedDownloadUrl("https://github.com/attacker/evil-repo/releases/download/v1.0.0/app.apk"))
+        assertFalse(
+            isAllowedDownloadUrl("https://github.com/Offrain-code/nuvio-deskremote/releases/download/../evil.apk"),
+        )
         assertFalse(isAllowedDownloadUrl(httpGh))
         assertFalse(isAllowedDownloadUrl("https://evil.example.com/nuvio.apk"))
         assertFalse(isAllowedDownloadUrl("https://github.com.evil.com/nuvio.apk"))
+    }
+
+    @Test
+    fun `parseSha256Sums matches release asset digest case-insensitively`() {
+        val sums = """
+            # SHA-256 checksums
+            0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef  *nuvio-deskremote-v0.5.1.apk
+        """.trimIndent()
+        assertEquals(
+            "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            parseSha256Sums(sums, "Nuvio-DeskRemote-v0.5.1.apk"),
+        )
+        assertNull(parseSha256Sums(sums, "other.apk"))
     }
 
     @Test

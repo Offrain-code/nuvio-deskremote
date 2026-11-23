@@ -446,10 +446,10 @@ private fun NuvioRouteHost(
                     bridge = conn.bridge,
                     wakeInfo = wakeInfo,
                     connState = connState,
-                    savedHost = (connState as? ConnState.Connected)?.host
-                        ?: (pairing.savedHost ?: ""),
+                    savedHost = pairing.savedHost ?: "",
                     tunnelUrl = tunnelUrl,
                     onConnect = onConnect,
+                    onDisconnect = { conn.disconnect() },
                     appLanguage = appLanguage,
                     onAppLanguageChange = onAppLanguageChange,
                     hapticsEnabled = hapticsEnabled,

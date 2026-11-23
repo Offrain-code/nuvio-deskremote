@@ -4,4 +4,5 @@ data class PcService(
     val hostname: String,
     val ip: String,
     val port: Int,
+    val serverId: String = "",
 )

@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.nuvio.remote.connection.ConnState
+import com.nuvio.remote.connection.EndpointUrlResolver
 import com.nuvio.remote.connection.NuvioConnection
 import com.nuvio.remote.connection.NuvioTab
 import com.nuvio.remote.connection.ScreenProfile
@@ -174,6 +175,9 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun applyDiscoveredService(found: PcService) {
+        if (!shouldAutoConnectDiscovered(pairing.isPaired(), pairing.savedHost, pairing.savedServerId, found)) {
+            return
+        }
         appPrefs.savedLanHost = found.ip
         conn.setPreferredLanHost(found.ip)
         if (pairing.savedHost != found.ip) {
@@ -188,10 +192,12 @@ class MainActivity : ComponentActivity() {
             val found = withContext(Dispatchers.IO) { discoverUdp().firstOrNull() }
             onUpdated(found)
             if (found != null) {
-                appPrefs.savedLanHost = found.ip
-                conn.setPreferredLanHost(found.ip)
-                pairing.savedHost = found.ip
-                conn.connect(found.ip, found.port)
+                if (shouldAutoConnectDiscovered(pairing.isPaired(), pairing.savedHost, pairing.savedServerId, found)) {
+                    appPrefs.savedLanHost = found.ip
+                    conn.setPreferredLanHost(found.ip)
+                    pairing.savedHost = found.ip
+                    conn.connect(found.ip, found.port)
+                }
             } else {
                 val fallback = appPrefs.savedLanHost.ifBlank { DEFAULT_HOST }
                 if (fallback.isNotBlank()) {
@@ -204,12 +210,10 @@ class MainActivity : ComponentActivity() {
     private fun connectToTarget(host: String, port: Int) {
         val clean = host.trim()
         if (clean.isEmpty()) return
-        val isRemoteUrl = clean.startsWith("http://", ignoreCase = true) ||
-            clean.startsWith("https://", ignoreCase = true) ||
-            clean.contains("trycloudflare.com", ignoreCase = true)
-        if (!isRemoteUrl) {
-            appPrefs.savedLanHost = clean
-            conn.setPreferredLanHost(clean)
+        val isRemoteUrl = EndpointUrlResolver.isRemoteTunnelHost(clean)
+        if (!isRemoteUrl && EndpointUrlResolver.isPrivateLanHost(clean)) {
+            appPrefs.savedLanHost = EndpointUrlResolver.extractHostOnly(clean)
+            conn.setPreferredLanHost(appPrefs.savedLanHost)
         }
         pairing.savedHost = clean
         conn.connect(clean, port)
@@ -275,5 +279,27 @@ class MainActivity : ComponentActivity() {
     companion object {
         private const val DEFAULT_HOST = ""
         private const val DEFAULT_PORT = 8787
+
+        /**
+         * Prevents zero-click session token theft via spoofed UDP discovery replies on foreign Wi-Fi.
+         * Auto-connects only when already paired AND either the IP matches the saved PC or the
+         * discovered `server_id` matches the paired PC's `savedServerId`.
+         */
+        internal fun shouldAutoConnectDiscovered(
+            isPaired: Boolean,
+            savedHost: String?,
+            savedServerId: String?,
+            discovered: PcService,
+        ): Boolean {
+            if (!isPaired || !EndpointUrlResolver.isPrivateLanHost(discovered.ip)) return false
+            val currentHost = savedHost?.trim().orEmpty()
+            if (currentHost.isNotEmpty() && EndpointUrlResolver.extractHostOnly(currentHost) == discovered.ip) {
+                return true
+            }
+            val expectedServerId = savedServerId?.trim().orEmpty()
+            return expectedServerId.isNotEmpty() &&
+                discovered.serverId.isNotBlank() &&
+                discovered.serverId == expectedServerId
+        }
     }
 }

@@ -723,12 +723,7 @@ async function startUpdateDownload() {
   renderUpdateModal();
 
   try {
-    const res = await invoke('download_github_update', {
-      downloadUrl: updateInfo.download_url,
-      assetName: updateInfo.asset_name,
-      version: updateInfo.latest_version,
-      expectedSha256: updateInfo.expected_sha256 || null,
-    });
+    const res = await invoke('download_github_update');
     updateShaVerified = Boolean(res?.sha256_verified);
     updateState = 'ready';
     renderUpdateModal();
@@ -804,7 +799,7 @@ els.btnUpdateInstall?.addEventListener('click', async () => {
     if (msg.includes('cancelled') || msg.includes('elevation')) {
       return;
     }
-    updateErrorKind = 'network';
+    updateErrorKind = msg.includes('sha-256') ? 'integrity' : 'network';
     updateState = 'error';
     renderUpdateModal();
   }

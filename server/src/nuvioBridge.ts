@@ -1032,6 +1032,12 @@ export class NuvioBridge extends EventEmitter {
     sock.on('data', (chunk: Buffer) => {
       if (this.socket !== sock) return;
       this.lineBuffer += chunk.toString('utf8');
+      if (this.lineBuffer.length > 2 * 1024 * 1024) {
+        warn('nuvio-bridge: incoming TCP line buffer exceeded 2 MiB limit; resetting connection');
+        this.lineBuffer = '';
+        this.destroySocket();
+        return;
+      }
       let nl = this.lineBuffer.indexOf('\n');
       while (nl !== -1) {
         const line = this.lineBuffer.slice(0, nl).replace(/\r$/, '');

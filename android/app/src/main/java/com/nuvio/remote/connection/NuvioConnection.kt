@@ -366,42 +366,12 @@ class NuvioConnection(
         }
     }
 
-    private fun isRemoteTunnelHost(host: String): Boolean {
-        val h = host.trim().lowercase()
-        return h.startsWith("wss://") ||
-            h.startsWith("https://") ||
-            h.contains(".trycloudflare.com") ||
-            h.contains(".ngrok")
-    }
+    private fun isRemoteTunnelHost(host: String): Boolean = EndpointUrlResolver.isRemoteTunnelHost(host)
 
-    private fun buildWsUrl(host: String, port: Int): String {
-        val clean = host.trim()
-            .removePrefix("wss://")
-            .removePrefix("ws://")
-            .removePrefix("https://")
-            .removePrefix("http://")
-            .trimEnd('/')
-        val base = if (isRemoteTunnelHost(host)) {
-            "wss://$clean"
-        } else {
-            "ws://$clean:$port"
-        }
-        val token = runCatching { authProvider() }.getOrDefault("")
-        return if (token.isNotBlank()) {
-            val sep = if (base.contains("?")) "&" else "?"
-            "$base${sep}auth=$token"
-        } else {
-            base
-        }
-    }
+    private fun buildWsUrl(host: String, port: Int): String? = EndpointUrlResolver.buildWsUrl(host, port)
 
     private fun displayHost(host: String): String {
-        val clean = host.trim()
-            .removePrefix("wss://")
-            .removePrefix("ws://")
-            .removePrefix("https://")
-            .removePrefix("http://")
-            .trimEnd('/')
+        val clean = EndpointUrlResolver.stripSchemeAndSlash(host)
         return if (clean.endsWith(".trycloudflare.com")) {
             "${l10nCurrent("Remote", "Remoto")} • " + clean.removeSuffix(".trycloudflare.com").take(12)
         } else {
@@ -466,8 +436,22 @@ class NuvioConnection(
 
         val token = runCatching { authProvider() }.getOrDefault("")
         val wsUrl = buildWsUrl(host, port)
-        val builder = Request.Builder().url(wsUrl)
-        if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+        if (wsUrl == null) {
+            _connState.value = ConnState.Failed(
+                l10nCurrent("Invalid PC address", "Endereço do PC inválido"),
+            )
+            return
+        }
+        val request = runCatching {
+            val builder = Request.Builder().url(wsUrl)
+            if (token.isNotBlank()) builder.header("Authorization", "Bearer $token")
+            builder.build()
+        }.getOrElse {
+            _connState.value = ConnState.Failed(
+                l10nCurrent("Invalid PC address", "Endereço do PC inválido"),
+            )
+            return
+        }
 
         val isTunnel = isRemoteTunnelHost(host)
         _isTunnelActive.value = isTunnel
@@ -579,8 +563,19 @@ class NuvioConnection(
                 if (socketGen.get() != myGen) return
                 heartbeatJob?.cancel()
                 stopAudioTrack()
+                latestFramePacket = null
+                publishScreenFrame(null)
+                bridge.resetOnDisconnect()
                 lastScreenStartKey = ""
                 _connState.value = ConnState.Disconnected
+                if (code == 1008) {
+                    autoReconnect = false
+                    _lastError.value = l10nCurrent(
+                        "Pairing required or revoked. Pair this phone again in Settings.",
+                        "Pareamento revogado ou necessário. Pareie este celular novamente em Ajustes.",
+                    )
+                    return
+                }
                 if (autoReconnect && code != 1000) {
                     scheduleReconnect()
                 }
@@ -590,6 +585,9 @@ class NuvioConnection(
                 if (socketGen.get() != myGen) return
                 heartbeatJob?.cancel()
                 stopAudioTrack()
+                latestFramePacket = null
+                publishScreenFrame(null)
+                bridge.resetOnDisconnect()
                 lastScreenStartKey = ""
                 _connState.value = ConnState.Failed(
                     t.message ?: l10nCurrent("connection failed", "falha de conexão"),
@@ -600,7 +598,7 @@ class NuvioConnection(
             }
         }
 
-        ws = client.newWebSocket(builder.build(), listener)
+        ws = client.newWebSocket(request, listener)
     }
 
     private fun startFrameDecoderLoop() {
@@ -1016,12 +1014,13 @@ class NuvioConnection(
                 _lastError.value = null
                 _connState.value = ConnState.Connected(host, obj.optString("version", "?"))
                 val tun = obj.optString("tunnelUrl", "").trim()
-                if (tun.isNotEmpty() && tun != "null") {
+                if (tun.isNotEmpty() && tun != "null" && EndpointUrlResolver.isAllowedTunnelUrl(tun)) {
                     _tunnelUrl.value = tun
                     onTunnelUrlDiscovered(tun)
                 }
+                val currentTok = runCatching { authProvider() }.getOrDefault("")
                 val paired = obj.optString("pairedToken", "").trim()
-                if (paired.startsWith("nuvio_sec_")) {
+                if (currentTok.isBlank() && paired.startsWith("nuvio_sec_") && paired.length >= 32) {
                     onTokenReceived(paired)
                 }
                 obj.optJSONArray("monitors")?.let { arr ->
@@ -1044,7 +1043,10 @@ class NuvioConnection(
             }
             "tunnel" -> {
                 val tun = obj.optString("url", "").trim()
-                if (tun.isNotEmpty() && tun != "null") {
+                if (tun.isEmpty() || tun == "null") {
+                    _tunnelUrl.value = null
+                    onTunnelUrlDiscovered("")
+                } else if (EndpointUrlResolver.isAllowedTunnelUrl(tun)) {
                     _tunnelUrl.value = tun
                     onTunnelUrlDiscovered(tun)
                 }

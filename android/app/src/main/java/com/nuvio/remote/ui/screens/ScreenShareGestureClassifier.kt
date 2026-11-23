@@ -1,0 +1,107 @@
+package com.nuvio.remote.ui.screens
+
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.abs
+import kotlin.math.hypot
+
+enum class MultiTouchMode {
+    UNDECIDED,
+    SCROLL,
+    PINCH_ZOOM,
+}
+
+data class MultiTouchDecision(
+    val mode: MultiTouchMode,
+    val zoomChange: Float = 1f,
+    val panChange: Offset = Offset.Zero,
+    val scrollSteps: Int = 0,
+)
+
+/**
+ * Classifies two-finger gestures in Screen Share with per-gesture intent locking,
+ * preventing vertical scroll from conflicting with pinch-to-zoom due to micro finger jitter.
+ */
+class MultiTouchGestureClassifier(
+    private val decisionDistancePx: Float = 44f,
+    private val pinchRatioThreshold: Float = 0.14f,
+    private val scrollGain: Float = 0.15f,
+) {
+    var mode: MultiTouchMode = MultiTouchMode.UNDECIDED
+        private set
+
+    private var accumPanX = 0f
+    private var accumPanY = 0f
+    private var cumulativeScale = 1f
+    private var scrollAcc = 0f
+
+    fun reset() {
+        mode = MultiTouchMode.UNDECIDED
+        accumPanX = 0f
+        accumPanY = 0f
+        cumulativeScale = 1f
+        scrollAcc = 0f
+    }
+
+    fun process(zoomChange: Float, panChange: Offset, currentZoom: Float): MultiTouchDecision {
+        if (mode == MultiTouchMode.UNDECIDED) {
+            if (currentZoom > 1.01f) {
+                mode = MultiTouchMode.PINCH_ZOOM
+            } else {
+                resolveInitialMode(zoomChange, panChange)
+            }
+        }
+        return when (mode) {
+            MultiTouchMode.UNDECIDED -> MultiTouchDecision(MultiTouchMode.UNDECIDED)
+            MultiTouchMode.PINCH_ZOOM -> MultiTouchDecision(
+                mode = MultiTouchMode.PINCH_ZOOM,
+                zoomChange = zoomChange,
+                panChange = panChange,
+            )
+            MultiTouchMode.SCROLL -> {
+                val steps = consumeScrollDelta(panChange.y)
+                MultiTouchDecision(mode = MultiTouchMode.SCROLL, scrollSteps = steps)
+            }
+        }
+    }
+
+    fun consumeSingleFingerScroll(deltaY: Float): Int = consumeScrollDelta(deltaY)
+
+    private fun resolveInitialMode(zoomChange: Float, panChange: Offset) {
+        cumulativeScale *= zoomChange
+        accumPanX += panChange.x
+        accumPanY += panChange.y
+        val scaleDelta = abs(cumulativeScale - 1f)
+        val absY = abs(accumPanY)
+        val absX = abs(accumPanX)
+        val panMag = hypot(accumPanX, accumPanY)
+
+        mode = when {
+            scaleDelta >= pinchRatioThreshold -> MultiTouchMode.PINCH_ZOOM
+            absY >= decisionDistancePx && absY >= absX * 1.15f -> MultiTouchMode.SCROLL
+            panMag >= decisionDistancePx && scaleDelta >= pinchRatioThreshold * 0.65f -> MultiTouchMode.PINCH_ZOOM
+            else -> MultiTouchMode.UNDECIDED
+        }
+    }
+
+    private fun consumeScrollDelta(deltaY: Float): Int {
+        if (abs(deltaY) <= 0.4f) return 0
+        scrollAcc += deltaY * scrollGain
+        val step = scrollAcc.toInt()
+        if (step != 0) scrollAcc -= step
+        return step
+    }
+}
+
+internal fun isPointInsideVideoRect(pos: Offset, origin: Offset, size: IntSize): Boolean {
+    if (size.width <= 1 || size.height <= 1) return true
+    return pos.x >= origin.x &&
+        pos.x <= origin.x + size.width &&
+        pos.y >= origin.y &&
+        pos.y <= origin.y + size.height
+}
+
+internal fun isPointInRightScrollStrip(pos: Offset, containerWidth: Int, stripWidthPx: Float): Boolean {
+    if (containerWidth <= 1 || stripWidthPx <= 0f) return false
+    return pos.x >= containerWidth - stripWidthPx
+}

@@ -1,0 +1,26 @@
+{
+  "name": "nuvio-deskremote-companion",
+  "version": "0.4.0",
+  "private": true,
+  "description": "Nuvio DeskRemote Companion Server (Windows LAN) — HTPC control, PC trackpad and low-latency screen share.",
+  "type": "commonjs",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prestart": "npm run build",
+    "start": "node dist/index.js",
+    "smoke": "node test/smoke.js",
+    "client": "node test/client.js"
+  },
+  "dependencies": {
+    "@ffmpeg-installer/ffmpeg": "^1.1.0",
+    "koffi": "^3.3.7",
+    "node-datachannel": "^26.0.0",
+    "ws": "^8.18.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.9",
+    "@types/ws": "^8.18.1",
+    "typescript": "^5.9.3"
+  }
+}

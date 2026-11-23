@@ -1,0 +1,46 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Nuvio DeskRemote Companion",
+  "version": "0.4.0",
+  "identifier": "com.nuvio.deskremote.companion",
+  "build": {
+    "frontendDist": "../ui"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Nuvio DeskRemote Companion",
+        "width": 800,
+        "height": 580,
+        "minWidth": 720,
+        "minHeight": 520,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "resources/**/*"
+    ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "nsis/hooks.nsh",
+        "displayLanguageSelector": true,
+        "languages": ["English", "PortugueseBR"]
+      }
+    }
+  }
+}

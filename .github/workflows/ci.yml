@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  privacy-audit:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run privacy hygiene audit
+        shell: pwsh
+        run: ./scripts/privacy-audit.ps1
+
+  server-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+      - name: Install, build and test companion server
+        working-directory: server
+        run: |
+          npm ci
+          npm run build
+          node --test test/nuvio-bridge.test.js
+          node --test test/webrtc-h264.test.js
+
+  android-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Run ktlintCheck, detekt, lintDebug and unit tests
+        working-directory: android
+        run: ./gradlew ktlintCheck detekt lintDebug testDebugUnitTest --no-daemon
+
+  desktop-check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Check Tauri v2 Rust crate
+        working-directory: desktop/src-tauri
+        run: cargo check

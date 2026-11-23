@@ -1,0 +1,45 @@
+# Dependencies & Build outputs
+node_modules/
+server/node_modules/
+server/dist/
+server/bin/cloudflared.exe
+server/bin/ffmpeg.exe
+server/bin/*.apk
+target/
+desktop/src-tauri/target/
+desktop/src-tauri/resources/server/
+
+# Logs & temporary files
+*.log
+*.log.old
+server/companion.log
+server/companion.err.log
+server/server.log
+android/build-log*.txt
+
+# Android local config, builds, signing keys & packaged APKs
+android/local.properties
+android/.gradle/
+android/.idea/
+android/.kotlin/
+android/build/
+android/app/build/
+android/*.apk
+android/*.zip
+*.jks
+*.keystore
+*.p12
+
+# Local runtime state / user configs (never commit tokens or personal paths)
+server/config.json
+server/paired-tokens.json
+paired-devices.json
+nuvio-bridge.json
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+*.iml

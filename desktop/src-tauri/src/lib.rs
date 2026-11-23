@@ -1,0 +1,287 @@
+use qrcode::render::svg;
+use qrcode::QrCode;
+use std::path::PathBuf;
+use std::process::{Child, Command};
+use std::sync::Mutex;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, Manager, State, WindowEvent};
+use tauri_plugin_dialog::DialogExt;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
+struct CompanionProcess(Mutex<Option<Child>>);
+
+fn resolve_server_paths(app: &AppHandle) -> Option<(PathBuf, PathBuf, PathBuf)> {
+    // 1. Installed mode: bundled resources next to the executable (resources/server/)
+    if let Ok(res_dir) = app.path().resource_dir() {
+        let srv_dir = res_dir.join("resources").join("server");
+        let entry = srv_dir.join("dist").join("index.js");
+        if entry.exists() {
+            let bundled_node = srv_dir.join("node.exe");
+            let node = if bundled_node.exists() {
+                bundled_node
+            } else {
+                PathBuf::from("node.exe")
+            };
+            return Some((node, entry, srv_dir));
+        }
+    }
+
+    // 2. Development mode: ../server/dist/index.js relative to the repository root
+    if let Ok(cwd) = std::env::current_dir() {
+        for ancestor in cwd.ancestors().take(4) {
+            let srv_dir = ancestor.join("server");
+            let entry = srv_dir.join("dist").join("index.js");
+            if entry.exists() {
+                return Some((PathBuf::from("node.exe"), entry, srv_dir));
+            }
+        }
+    }
+
+    None
+}
+
+fn spawn_companion(app: &AppHandle) -> Option<Child> {
+    let (node, entry, workdir) = resolve_server_paths(app)?;
+    let mut cmd = Command::new(node);
+    cmd.arg(entry).current_dir(workdir);
+    #[cfg(target_os = "windows")]
+    {
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd.spawn().ok()
+}
+
+fn stop_companion_locked(guard: &mut Option<Child>) {
+    if let Some(mut child) = guard.take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+fn show_main_window(app: &AppHandle, focus_pairing: bool) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.unminimize();
+        let _ = win.show();
+        let _ = win.set_focus();
+        if focus_pairing {
+            let _ = win.emit("focus-pairing", ());
+        }
+    }
+}
+
+#[tauri::command]
+fn render_qr_svg(payload: String) -> Result<String, String> {
+    let code = QrCode::new(payload.as_bytes()).map_err(|e| e.to_string())?;
+    let svg_str = code
+        .render::<svg::Color>()
+        .min_dimensions(180, 180)
+        .dark_color(svg::Color("#090b12"))
+        .light_color(svg::Color("#ffffff"))
+        .quiet_zone(true)
+        .build();
+    Ok(svg_str)
+}
+
+#[tauri::command]
+fn companion_request(method: String, path: String, body: Option<String>) -> Result<String, String> {
+    if !path.starts_with('/') {
+        return Err("Invalid request path".to_string());
+    }
+    let url = format!("http://127.0.0.1:8787{}", path);
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    let req = match method.to_uppercase().as_str() {
+        "POST" => {
+            let b = body.unwrap_or_else(|| "{}".to_string());
+            client
+                .post(&url)
+                .header("Content-Type", "application/json")
+                .body(b)
+        }
+        _ => client.get(&url),
+    };
+
+    let resp = req.send().map_err(|e| e.to_string())?;
+    resp.text().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn restart_companion(app: AppHandle, state: State<'_, CompanionProcess>) -> Result<(), String> {
+    let mut guard = state.0.lock().map_err(|e| e.to_string())?;
+    stop_companion_locked(&mut guard);
+    *guard = spawn_companion(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn hide_to_tray(app: AppHandle) {
+    if let Some(win) = app.get_webview_window("main") {
+        let _ = win.hide();
+    }
+}
+
+#[tauri::command]
+fn pick_nuvio_exe(app: AppHandle) -> Option<String> {
+    app.dialog()
+        .file()
+        .set_title("Select Nuvio HTPC executable (Nuvio.exe)")
+        .add_filter("Windows Executable", &["exe"])
+        .blocking_pick_file()
+        .and_then(|fp| fp.into_path().ok())
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn get_autostart() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let out = Command::new("reg.exe")
+            .args([
+                "query",
+                r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                "/v",
+                "NuvioDeskRemoteCompanion",
+            ])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output();
+        return matches!(out, Ok(o) if o.status.success());
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
+}
+
+#[tauri::command]
+fn set_autostart(enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        if enabled {
+            let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+            let val = format!("\"{}\" --minimized", exe.to_string_lossy());
+            let status = Command::new("reg.exe")
+                .args([
+                    "add",
+                    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                    "/v",
+                    "NuvioDeskRemoteCompanion",
+                    "/t",
+                    "REG_SZ",
+                    "/d",
+                    &val,
+                    "/f",
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status()
+                .map_err(|e| e.to_string())?;
+            if !status.success() {
+                return Err("Failed to register Windows autostart entry".to_string());
+            }
+        } else {
+            let _ = Command::new("reg.exe")
+                .args([
+                    "delete",
+                    r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run",
+                    "/v",
+                    "NuvioDeskRemoteCompanion",
+                    "/f",
+                ])
+                .creation_flags(CREATE_NO_WINDOW)
+                .status();
+        }
+    }
+    Ok(())
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    let start_minimized = std::env::args().any(|a| a == "--minimized");
+
+    tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .manage(CompanionProcess(Mutex::new(None)))
+        .setup(move |app| {
+            let handle = app.handle().clone();
+
+            // Launch the bundled Node.js Companion server hidden alongside the desktop app
+            if let Ok(mut guard) = app.state::<CompanionProcess>().0.lock() {
+                *guard = spawn_companion(&handle);
+            }
+
+            if start_minimized {
+                if let Some(win) = app.get_webview_window("main") {
+                    let _ = win.hide();
+                }
+            }
+
+            let open_item = MenuItem::with_id(app, "open", "Open Nuvio DeskRemote", true, None::<&str>)?;
+            let pair_item = MenuItem::with_id(app, "pair", "Pair Phone / QR Code", true, None::<&str>)?;
+            let restart_item = MenuItem::with_id(app, "restart", "Restart Server", true, None::<&str>)?;
+            let sep = PredefinedMenuItem::separator(app)?;
+            let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+            let menu = Menu::with_items(app, &[&open_item, &pair_item, &restart_item, &sep, &quit_item])?;
+
+            let mut tray_builder = TrayIconBuilder::new()
+                .menu(&menu)
+                .tooltip("Nuvio DeskRemote Companion")
+                .on_menu_event(|app, event| match event.id.as_ref() {
+                    "open" => show_main_window(app, false),
+                    "pair" => show_main_window(app, true),
+                    "restart" => {
+                        if let Ok(mut guard) = app.state::<CompanionProcess>().0.lock() {
+                            stop_companion_locked(&mut guard);
+                            *guard = spawn_companion(app);
+                        }
+                    }
+                    "quit" => {
+                        if let Ok(mut guard) = app.state::<CompanionProcess>().0.lock() {
+                            stop_companion_locked(&mut guard);
+                        }
+                        app.exit(0);
+                    }
+                    _ => {}
+                })
+                .on_tray_icon_event(|tray, event| {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event
+                    {
+                        show_main_window(tray.app_handle(), false);
+                    }
+                });
+
+            if let Some(icon) = app.default_window_icon() {
+                tray_builder = tray_builder.icon(icon.clone());
+            }
+            let _tray = tray_builder.build(app)?;
+            Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
+        .invoke_handler(tauri::generate_handler![
+            render_qr_svg,
+            companion_request,
+            restart_companion,
+            hide_to_tray,
+            pick_nuvio_exe,
+            get_autostart,
+            set_autostart
+        ])
+        .run(tauri::generate_context!())
+        .expect("error running Nuvio DeskRemote Companion");
+}

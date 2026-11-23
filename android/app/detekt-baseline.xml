@@ -1,0 +1,23 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ComplexCondition:NuvioConnection.kt$NuvioConnection$click == null &amp;&amp; doubleClick == null &amp;&amp; down == null &amp;&amp; up == null</ID>
+    <ID>ComplexCondition:NuvioConnection.kt$NuvioConnection$offerSdp.isNullOrBlank() &amp;&amp; key == lastScreenStartKey &amp;&amp; (curStatus == "starting" || curStatus == "running") &amp;&amp; now - lastScreenStartAt &lt; 300L</ID>
+    <ID>CyclomaticComplexMethod:NuvioConnection.kt$NuvioConnection$private fun handleServerMessage(host: String, text: String)</ID>
+    <ID>CyclomaticComplexMethod:NuvioConnection.kt$NuvioConnection$private fun startFrameDecoderLoop()</ID>
+    <ID>CyclomaticComplexMethod:NuvioConnection.kt$NuvioConnection$private fun triggerPointerFlush()</ID>
+    <ID>CyclomaticComplexMethod:PcDiscovery.kt$fun discoverUdp(port: Int = 8766, timeoutMs: Int = 1800): List&lt;PcService&gt;</ID>
+    <ID>LargeClass:NuvioConnection.kt$NuvioConnection</ID>
+    <ID>LoopWithTooManyJumpStatements:NuvioConnection.kt$NuvioConnection$while</ID>
+    <ID>LoopWithTooManyJumpStatements:PcDiscovery.kt$while</ID>
+    <ID>NestedBlockDepth:NuvioConnection.kt$NuvioConnection$private fun handleServerMessage(host: String, text: String)</ID>
+    <ID>NestedBlockDepth:PairingManager.kt$PairingManager$fun requestPin(host: String, port: Int = 8765): RequestPinResult</ID>
+    <ID>NestedBlockDepth:PcDiscovery.kt$fun discoverUdp(port: Int = 8766, timeoutMs: Int = 1800): List&lt;PcService&gt;</ID>
+    <ID>NewLineAtEndOfFile:Haptics.kt$com.nuvio.remote.ui.components.Haptics.kt</ID>
+    <ID>NewLineAtEndOfFile:ScreenStreamController.kt$com.nuvio.remote.webrtc.ScreenStreamController.kt</ID>
+    <ID>SpreadOperator:NuvioConnection.kt$NuvioConnection$(*absBuf)</ID>
+    <ID>SpreadOperator:NuvioConnection.kt$NuvioConnection$(*relBuf)</ID>
+    <ID>TooManyFunctions:NuvioConnection.kt$NuvioConnection</ID>
+  </CurrentIssues>
+</SmellBaseline>

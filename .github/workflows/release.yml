@@ -1,0 +1,75 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Decode release keystore (if configured)
+        if: ${{ secrets.NUVIO_KEYSTORE_B64 != '' }}
+        shell: bash
+        run: |
+          echo "${{ secrets.NUVIO_KEYSTORE_B64 }}" | base64 --decode > android/release.keystore
+          echo "NUVIO_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/release.keystore" >> "$GITHUB_ENV"
+      - name: Build Android Release APK
+        working-directory: android
+        env:
+          NUVIO_KEYSTORE_PASSWORD: ${{ secrets.NUVIO_KEYSTORE_PASSWORD }}
+          NUVIO_KEY_ALIAS: ${{ secrets.NUVIO_KEY_ALIAS }}
+          NUVIO_KEY_PASSWORD: ${{ secrets.NUVIO_KEY_PASSWORD }}
+        run: ./gradlew ktlintCheck detekt testDebugUnitTest assembleRelease --no-daemon
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuvio-deskremote-android
+          path: android/app/build/outputs/apk/release/*.apk
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install Tauri CLI v2
+        run: cargo install tauri-cli --version "^2" --locked
+      - name: Prepare Companion server bundle
+        shell: pwsh
+        run: ./desktop/scripts/prepare-bundle.ps1
+      - name: Build Windows NSIS Installer
+        working-directory: desktop/src-tauri
+        run: cargo tauri build --bundles nsis
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nuvio-deskremote-windows
+          path: desktop/src-tauri/target/release/bundle/nsis/*.exe
+
+  publish-release:
+    needs: [build-android, build-windows]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            release-assets/nuvio-deskremote-android/*.apk
+            release-assets/nuvio-deskremote-windows/*.exe

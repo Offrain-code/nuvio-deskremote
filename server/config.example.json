@@ -1,0 +1,21 @@
+{
+  "port": 8787,
+  "loopback": true,
+  "nuvioLogPath": null,
+  "nuvioExePath": null,
+  "apkPath": null,
+  "nuvioWindowTitle": "Nuvio HTPC",
+  "playerEnterMarkers": ["\\(PlaybackStartTrace\\)\\s+id=\\d+\\s+playerAttach"],
+  "playerExitMarkers": ["\\(PlaybackStopTrace\\)", "playerDetach", "\\(PlaybackEnd\\)"],
+  "auth": { "mode": "open" },
+  "tunnel": {
+    "enabled": false
+  },
+  "screen": {
+    "encoder": "auto",
+    "bitrateKbps": 4000,
+    "gopSeconds": 2,
+    "portRangeBegin": 60000,
+    "portRangeEnd": 60100
+  }
+}

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nuvio DeskRemote Companion</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="glass-header">
+        <div class="header-brand">
+          <div class="brand-badge" aria-hidden="true">
+            <svg width="24" height="24" viewBox="0 0 108 108" fill="none">
+              <circle cx="54" cy="54" r="46" stroke="currentColor" stroke-width="5" opacity="0.85" />
+              <circle cx="54" cy="54" r="18" fill="currentColor" />
+            </svg>
+          </div>
+          <div class="brand-text">
+            <div class="brand-title-row">
+              <h1>Nuvio DeskRemote Companion</h1>
+              <span class="chip chip-neutral" data-i18n="nativeWin">Native Windows</span>
+            </div>
+            <p class="brand-sub" data-i18n="brandSub">HTPC Remote + Trackpad + Screen Share over LAN</p>
+          </div>
+        </div>
+
+        <div class="header-actions">
+          <div class="lang-switcher" role="group" aria-label="Language">
+            <button id="btnLangEn" type="button" class="lang-btn" data-lang="en">EN</button>
+            <button id="btnLangPt" type="button" class="lang-btn" data-lang="pt-BR">PT-BR</button>
+          </div>
+          <span id="headerStatusBadge" class="chip chip-online">
+            <span class="led led-online"></span>
+            <span id="headerStatusLabel">Connecting…</span>
+          </span>
+          <button
+            id="btnRestartHeader"
+            class="icon-btn"
+            data-i18n-title="restartServerTitle"
+            title="Restart server"
+            aria-label="Restart server"
+          >
+            &#x21BB;
+          </button>
+          <button
+            id="btnHideTray"
+            class="icon-btn"
+            data-i18n-title="hideTrayTitle"
+            title="Minimize to system tray"
+            aria-label="Minimize to system tray"
+          >
+            &#x2212;
+          </button>
+        </div>
+      </header>
+
+      <main class="main-grid">
+        <!-- Left column: QR + PIN Pairing and Service Status -->
+        <div class="col">
+          <section id="pairingCard" class="opaque-card">
+            <div class="card-head">
+              <h2 data-i18n="pairingHeading">QUICK PAIRING (QR + PIN)</h2>
+              <span id="pinCountdownBadge" class="chip chip-accent">Expires in 02:00 (120s)</span>
+            </div>
+
+            <div class="pairing-body">
+              <div id="qrBox" class="qr-box" aria-label="LAN Pairing QR Code">
+                <span class="qr-loading" data-i18n="generatingQr">Generating QR…</span>
+              </div>
+
+              <div class="pin-info">
+                <div class="pin-label" data-i18n="pinLabel">6-DIGIT PIN (LAN)</div>
+                <div id="pinCodeValue" class="pin-value">--- ---</div>
+                <div class="pin-progress-track">
+                  <div id="pinProgressBar" class="pin-progress-bar"></div>
+                </div>
+                <p id="pairingHint" class="helper-text" data-i18n="pairingHint">
+                  Scan the QR Code in the Android app or enter this PIN on the same Wi-Fi.
+                </p>
+              </div>
+            </div>
+
+            <button id="btnRefreshPin" class="btn-secondary btn-full" data-i18n="refreshPinBtn">
+              &#x21BB; Generate new code (120s)
+            </button>
+          </section>
+
+          <section class="opaque-card">
+            <div class="card-head">
+              <h2 data-i18n="servicesHeading">SERVICE &amp; NETWORK STATUS</h2>
+              <span class="chip chip-neutral">LAN Wi-Fi</span>
+            </div>
+
+            <div class="status-list">
+              <div class="opaque-cell status-row">
+                <div class="row-left">
+                  <span id="companionLed" class="led led-warn"></span>
+                  <span class="row-title" data-i18n="companionServer">Companion Server</span>
+                </div>
+                <span id="companionBadge" class="chip chip-neutral">Starting…</span>
+              </div>
+
+              <div class="opaque-cell status-row-stack">
+                <div class="status-row-top">
+                  <div class="row-left">
+                    <span id="bridgeLed" class="led led-warn"></span>
+                    <span class="row-title" data-i18n="nuvioBridge">Nuvio HTPC Bridge</span>
+                  </div>
+                  <span id="bridgeBadge" class="chip chip-warn">Waiting</span>
+                </div>
+                <div id="bridgeWarningBox" class="bridge-warning hidden">
+                  <p id="bridgeWarningText">
+                    Nuvio HTPC is not open or waiting to link under
+                    <strong>Settings &gt; Mobile Remote</strong>.
+                  </p>
+                  <button id="btnOpenNuvio" class="btn-secondary btn-sm" data-i18n="openNuvioBtn">
+                    Open Nuvio
+                  </button>
+                </div>
+              </div>
+
+              <div class="opaque-cell status-row">
+                <div class="row-left">
+                  <span class="wifi-glyph" aria-hidden="true">&#x25CE;</span>
+                  <span id="lanIpLabel" class="row-title">Wi-Fi IP: detecting…</span>
+                </div>
+                <span class="chip chip-neutral" data-i18n="localNetwork">Local Network</span>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Right column: Paired Devices and PC Controls -->
+        <div class="col">
+          <section class="opaque-card">
+            <div class="card-head">
+              <h2 data-i18n="devicesHeading">PAIRED DEVICES</h2>
+              <span id="devicesCountBadge" class="chip chip-neutral">0 phones</span>
+            </div>
+
+            <div id="devicesList" class="devices-list">
+              <div class="opaque-cell empty-cell" data-i18n="emptyDevices">
+                No phones paired yet. Scan the QR Code on the left to get started.
+              </div>
+            </div>
+          </section>
+
+          <section class="opaque-card">
+            <div class="card-head">
+              <h2 data-i18n="pcControlsHeading">COMPUTER CONTROLS</h2>
+              <span id="nuvioExeStatusBadge" class="chip chip-neutral">Checking…</span>
+            </div>
+
+            <div class="controls-stack">
+              <div class="exe-picker-row">
+                <div class="opaque-cell exe-path-box">
+                  <span class="mini-label" data-i18n="nuvioExeLabel">NUVIO HTPC PATH</span>
+                  <span id="nuvioExePathText" class="mono-ellipsis">Auto-detect</span>
+                </div>
+                <button id="btnBrowseNuvio" class="btn-secondary" data-i18n="browseBtn">Browse…</button>
+              </div>
+
+              <label class="opaque-cell toggle-row">
+                <div class="toggle-copy">
+                  <span class="row-title" data-i18n="autostartTitle">Start with Windows</span>
+                  <span class="helper-text" data-i18n="autostartSub">
+                    Starts minimized in the system tray when signing in to Windows
+                  </span>
+                </div>
+                <input id="toggleAutostart" type="checkbox" class="switch-input" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </label>
+
+              <label class="opaque-cell toggle-row">
+                <div class="toggle-copy">
+                  <span class="row-title" data-i18n="tunnelTitle">Remote Access (away from home)</span>
+                  <span id="tunnelSubtitle" class="helper-text">
+                    Off by default • Restricted to local Wi-Fi network
+                  </span>
+                </div>
+                <input id="toggleTunnel" type="checkbox" class="switch-input" />
+                <span class="switch-track" aria-hidden="true"><span class="switch-thumb"></span></span>
+              </label>
+
+              <div id="tunnelActiveBox" class="opaque-cell tunnel-box hidden">
+                <div class="tunnel-url-row">
+                  <span id="tunnelUrlText" class="mono-ellipsis">Starting Cloudflare tunnel…</span>
+                  <button id="btnCopyTunnel" class="btn-primary btn-sm" data-i18n="copyUrlBtn">Copy URL</button>
+                </div>
+                <p class="lan-only-note" data-i18n="lanOnlyNote">
+                  Security: 6-digit PIN and new device pairing remain restricted to LAN (LAN_ONLY).
+                  Only phones already paired on local Wi-Fi can connect over the tunnel.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>

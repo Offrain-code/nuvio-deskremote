@@ -1,0 +1,20 @@
+{
+  "en": [
+    "Hardened LAN_ONLY pairing, local IPC authentication, and immediate WebSocket/UDP device revocation.",
+    "Secured Android & Windows auto-updaters with redirect allowlists and mandatory SHA-256 verification.",
+    "Stabilized Screen Share on clean Windows PCs (FFmpeg 4.1 fallback, dual-monitor ddagrab, zero orphan processes).",
+    "Improved PC loopback audio (preserves mute state, 24-bit PCM support, safe disconnect on device switch).",
+    "Fixed Win32 Alt focus lock, negative mouse/scroll deltas, emoji typing, and graceful Companion shutdown.",
+    "Fixed Android WebRTC/EGL leaks, lock-screen media service stability, and Android 13+ notification permission.",
+    "Fixed Light Theme slider contrast, Cinema/Player scrubbing, two-finger trackpad tap, and Live TV progress."
+  ],
+  "pt-BR": [
+    "Reforço de segurança em LAN_ONLY, autenticação IPC local e revogação imediata de sessões WebSocket/UDP.",
+    "Auto-updaters Android e Windows protegidos com validação de redirects e verificação obrigatória de SHA-256.",
+    "Screen Share mais estável em PCs limpos (compatibilidade FFmpeg 4.1, ddagrab em 2 monitores e fim de processos órfãos).",
+    "Áudio do PC aprimorado (preserva estado de mudo, suporte a PCM 24-bit e recuperação ao trocar saída de áudio).",
+    "Correções Win32: fim do Alt preso, movimento/scroll negativo, envio de emojis e desligamento limpo do Companion.",
+    "Correção de vazamentos WebRTC/EGL no Android, estabilidade do serviço de mídia e permissão de notificações (Android 13+).",
+    "Correção de contraste dos sliders no Tema Claro, arraste no Player/Cinema, toque de 2 dedos no Trackpad e progresso da Live TV."
+  ]
+}

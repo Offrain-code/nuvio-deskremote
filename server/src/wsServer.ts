@@ -38,7 +38,7 @@ import type {
 } from './protocol';
 
 const SERVER_NAME = 'nuvio-deskremote-companion';
-const SERVER_VERSION = '0.4.3';
+const SERVER_VERSION = '0.5.2';
 const DISCOVERY_UDP_PORT = 8766;
 const PAIRING_HTTP_PORT = 8765;
 const MOUSE_UDP_PORT = 8768;

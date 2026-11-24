@@ -57,6 +57,18 @@ export interface Win32Bindings {
   PostMessageW: W32Fn;
   MessageBeep: W32Fn;
   mouse_event: W32Fn;
+  OpenClipboard?: W32Fn;
+  CloseClipboard?: W32Fn;
+  EmptyClipboard?: W32Fn;
+  GetClipboardData?: W32Fn;
+  SetClipboardData?: W32Fn;
+  GlobalAlloc?: W32Fn;
+  GlobalLock?: W32Fn;
+  GlobalUnlock?: W32Fn;
+  GlobalFree?: W32Fn;
+  GlobalSize?: W32Fn;
+  RtlMoveMemoryToPtr?: W32Fn;
+  RtlMoveMemoryFromPtr?: W32Fn;
 }
 
 const VK_MENU = 0x12; // ALT — used in foreground focus fallback
@@ -113,6 +125,18 @@ export function loadWin32(): Win32Bindings {
     PostMessageW: sig('int __stdcall PostMessageW(uintptr_t hWnd, uint32 Msg, uintptr_t wParam, intptr_t lParam)'),
     MessageBeep: sig('int __stdcall MessageBeep(uint32 uType)'),
     mouse_event: sig('void __stdcall mouse_event(uint32 dwFlags, int32 dx, int32 dy, int32 dwData, uintptr_t dwExtraInfo)'),
+    OpenClipboard: sig('int __stdcall OpenClipboard(uintptr_t hWndNewOwner)'),
+    CloseClipboard: sig('int __stdcall CloseClipboard(void)'),
+    EmptyClipboard: sig('int __stdcall EmptyClipboard(void)'),
+    GetClipboardData: sig('uintptr_t __stdcall GetClipboardData(uint32 uFormat)'),
+    SetClipboardData: sig('uintptr_t __stdcall SetClipboardData(uint32 uFormat, uintptr_t hMem)'),
+    GlobalAlloc: ksig('uintptr_t __stdcall GlobalAlloc(uint32 uFlags, size_t dwBytes)'),
+    GlobalLock: ksig('uintptr_t __stdcall GlobalLock(uintptr_t hMem)'),
+    GlobalUnlock: ksig('int __stdcall GlobalUnlock(uintptr_t hMem)'),
+    GlobalFree: ksig('uintptr_t __stdcall GlobalFree(uintptr_t hMem)'),
+    GlobalSize: ksig('size_t __stdcall GlobalSize(uintptr_t hMem)'),
+    RtlMoveMemoryToPtr: ksig('void __stdcall RtlMoveMemory(uintptr_t Destination, const void *Source, size_t Length)'),
+    RtlMoveMemoryFromPtr: ksig('void __stdcall RtlMoveMemory(void *Destination, uintptr_t Source, size_t Length)'),
   };
 
   attachToInteractiveDesktop(bindings);
@@ -333,4 +357,79 @@ export function sendInputs(bind: Win32Bindings, buf: Buffer, count: number): { o
 }
 function sendKeyRaw(bind: Win32Bindings, key: Omit<KeyRaw, 'keyup'>, up: boolean): void {
   sendInputs(bind, packInput([{ ...key, keyup: up }]), 1);
+}
+
+const CF_UNICODETEXT = 13;
+const GMEM_MOVEABLE = 0x0002;
+
+/** Fast (<1ms) native Win32 clipboard write via user32/kernel32; returns false if clipboard is busy/unavailable. */
+export function setClipboardTextNative(bind: Win32Bindings, text: string): boolean {
+  if (
+    !bind.OpenClipboard || !bind.CloseClipboard || !bind.EmptyClipboard ||
+    !bind.SetClipboardData || !bind.GlobalAlloc || !bind.GlobalLock ||
+    !bind.GlobalUnlock || !bind.GlobalFree || !bind.RtlMoveMemoryToPtr
+  ) {
+    return false;
+  }
+  const utf16 = Buffer.from(`${text}\0`, 'utf16le');
+  if (!Number(bind.OpenClipboard(0))) return false;
+  let hMem: unknown = 0;
+  let ownedByClipboard = false;
+  try {
+    bind.EmptyClipboard();
+    hMem = bind.GlobalAlloc(GMEM_MOVEABLE, utf16.length);
+    if (hwndValue(hMem) === 0n) return false;
+    const ptr = bind.GlobalLock(hMem);
+    if (hwndValue(ptr) === 0n) return false;
+    try {
+      bind.RtlMoveMemoryToPtr(ptr, utf16, utf16.length);
+    } finally {
+      bind.GlobalUnlock(hMem);
+    }
+    const placed = bind.SetClipboardData(CF_UNICODETEXT, hMem);
+    if (hwndValue(placed) !== 0n) {
+      ownedByClipboard = true;
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  } finally {
+    if (!ownedByClipboard && hwndValue(hMem) !== 0n) {
+      try { bind.GlobalFree(hMem); } catch { /* ignore */ }
+    }
+    try { bind.CloseClipboard(); } catch { /* ignore */ }
+  }
+}
+
+/** Fast (<1ms) native Win32 clipboard read via user32/kernel32; returns null if unavailable. */
+export function getClipboardTextNative(bind: Win32Bindings, maxBytes: number): string | null {
+  if (
+    !bind.OpenClipboard || !bind.CloseClipboard || !bind.GetClipboardData ||
+    !bind.GlobalLock || !bind.GlobalUnlock || !bind.GlobalSize || !bind.RtlMoveMemoryFromPtr
+  ) {
+    return null;
+  }
+  if (!Number(bind.OpenClipboard(0))) return null;
+  try {
+    const hData = bind.GetClipboardData(CF_UNICODETEXT);
+    if (hwndValue(hData) === 0n) return '';
+    const size = Math.min(Number(bind.GlobalSize(hData)) || 0, maxBytes * 2);
+    if (size <= 0) return '';
+    const ptr = bind.GlobalLock(hData);
+    if (hwndValue(ptr) === 0n) return '';
+    try {
+      const buf = Buffer.alloc(size);
+      bind.RtlMoveMemoryFromPtr(buf, ptr, size);
+      const raw = buf.toString('utf16le');
+      const nul = raw.indexOf('\0');
+      return nul >= 0 ? raw.slice(0, nul) : raw;
+    } finally {
+      bind.GlobalUnlock(hData);
+    }
+  } catch {
+    return null;
+  } finally {
+    try { bind.CloseClipboard(); } catch { /* ignore */ }
+  }
 }

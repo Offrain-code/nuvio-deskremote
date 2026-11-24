@@ -134,7 +134,7 @@ internal fun computeCockpitMetrics(
             rockerWidth = rockerW,
             rockerHeight = if (isPlayer) 148.dp else 156.dp,
             dpadDiameter = minOf(targetDpad, maxFitDpad),
-            centerOkSize = 56.dp,
+            centerOkSize = if (isPlayer) 48.dp else 52.dp,
             satelliteSize = 38.dp,
             sideGap = if (isPlayer) 6.dp else 8.dp,
         )
@@ -148,7 +148,7 @@ internal fun computeCockpitMetrics(
         rockerWidth = rockerW,
         rockerHeight = 170.dp,
         dpadDiameter = minOf(186.dp, maxFitDpad),
-        centerOkSize = 68.dp,
+        centerOkSize = 64.dp,
         satelliteSize = 42.dp,
         sideGap = 12.dp,
     )
@@ -659,7 +659,7 @@ private fun PrecisionDPadRing(
                 variant = GlassVariant.REGULAR,
                 accentTint = accentSurface,
             )
-            .padding(6.dp),
+            .padding(2.dp),
         contentAlignment = Alignment.Center,
     ) {
         Box(
@@ -673,8 +673,7 @@ private fun PrecisionDPadRing(
                 ),
         )
 
-        val compactRing = diameter < 176.dp
-        val majorSpan = if (compactRing) 52.dp else 58.dp
+        val majorSpan = if (diameter <= 166.dp) 48.dp else 54.dp
 
         DPadDirectionButton(
             icon = Icons.Rounded.KeyboardArrowUp,
@@ -791,6 +790,7 @@ private fun BoxScope.DPadDirectionButton(
             contentDescription = description,
             tint = if (isPressed) scheme.textPrimary else scheme.textSecondary,
             modifier = Modifier
+                .padding(4.dp)
                 .size(28.dp)
                 .graphicsLayer {
                     scaleX = scale

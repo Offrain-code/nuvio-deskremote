@@ -1,9 +1,7 @@
 package com.nuvio.remote.ui.screens
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
 import android.text.format.DateFormat
-import android.util.LruCache
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -72,6 +70,7 @@ import com.nuvio.remote.ui.components.Haptics
 import com.nuvio.remote.ui.components.NuvioGlassSlider
 import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
+import com.nuvio.remote.ui.components.rememberRemoteBitmap
 import com.nuvio.remote.ui.i18n.LocalAppLanguage
 import com.nuvio.remote.ui.i18n.ResolvedLanguage
 import com.nuvio.remote.ui.i18n.l10n
@@ -79,15 +78,11 @@ import com.nuvio.remote.ui.theme.LocalHapticsEnabled
 import com.nuvio.remote.ui.theme.LocalNuvioColors
 import com.nuvio.remote.ui.theme.NuvioTypography
 import com.nuvio.remote.ui.theme.accentForScreen
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.withContext
-import java.net.HttpURLConnection
-import java.net.URL
 import java.util.Date
 import java.util.Locale
 
-private val posterBitmapCache = LruCache<String, Bitmap>(12)
+private const val PLAYER_POSTER_MAX_PX = 256
 
 enum class PlayerSheetType {
     NONE,
@@ -180,7 +175,7 @@ private fun NowPlayingMiniCard(nowPlaying: NuvioNowPlaying, nowMs: Long, onSeekT
     val scheme = LocalNuvioColors.current
     val context = LocalContext.current
     val lang = LocalAppLanguage.current
-    val art = rememberRemoteBitmap(nowPlaying.imageUrl)
+    val art = rememberRemoteBitmap(nowPlaying.imageUrl, maxDimensionPx = PLAYER_POSTER_MAX_PX)
     val livePos = nowPlaying.positionAt(nowMs)
     val duration = nowPlaying.durationMs
     var scrubbingFrac by remember(nowPlaying.title) { mutableStateOf<Float?>(null) }
@@ -714,37 +709,4 @@ private fun PlayerGridCell(
             )
         }
     }
-}
-
-@Composable
-private fun rememberRemoteBitmap(url: String?): Bitmap? {
-    var bitmap by remember(url) { mutableStateOf(url?.let { posterBitmapCache.get(it) }) }
-    LaunchedEffect(url) {
-        if (url.isNullOrBlank()) {
-            bitmap = null
-            return@LaunchedEffect
-        }
-        posterBitmapCache.get(url)?.let {
-            bitmap = it
-            return@LaunchedEffect
-        }
-        val fetched = withContext(Dispatchers.IO) {
-            runCatching {
-                val conn = (URL(url).openConnection() as HttpURLConnection).apply {
-                    connectTimeout = 3500
-                    readTimeout = 3500
-                }
-                try {
-                    conn.inputStream.use { BitmapFactory.decodeStream(it) }
-                } finally {
-                    conn.disconnect()
-                }
-            }.getOrNull()
-        }
-        if (fetched != null) {
-            posterBitmapCache.put(url, fetched)
-            bitmap = fetched
-        }
-    }
-    return bitmap
 }

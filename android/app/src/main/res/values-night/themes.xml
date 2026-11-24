@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.NuvioRemote" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#090A0D</item>
+        <item name="android:statusBarColor">#090A0D</item>
+        <item name="android:navigationBarColor">#090A0D</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

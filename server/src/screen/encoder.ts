@@ -322,7 +322,7 @@ export class MjpegEncoder {
       const ddaIdx = opts.ddaOutputIdx ?? 0;
       const vfChain = isUnscaled
         ? 'hwdownload,format=bgra,format=yuvj420p'
-        : `hwdownload,format=bgra,scale=${sw}:${sh}:flags=lanczos,format=yuvj420p`;
+        : `hwdownload,format=bgra,scale=${sw}:${sh}:flags=fast_bilinear,format=yuvj420p`;
       args = [
         '-hide_banner', '-loglevel', 'error',
         '-probesize', '32', '-analyzeduration', '0', '-fpsprobesize', '0',
@@ -340,7 +340,7 @@ export class MjpegEncoder {
       this.isDirectCapture = false;
       const vfChain = isUnscaled
         ? 'format=yuvj420p'
-        : `scale=${sw}:${sh}:flags=lanczos,format=yuvj420p`;
+        : `scale=${sw}:${sh}:flags=fast_bilinear,format=yuvj420p`;
       args = [
         '-hide_banner', '-loglevel', 'error',
         '-probesize', '32', '-analyzeduration', '0', '-fpsprobesize', '0',
@@ -363,7 +363,7 @@ export class MjpegEncoder {
       this.isDirectCapture = false;
       const vfChain = isUnscaled
         ? 'format=yuvj420p'
-        : `scale=${sw}:${sh}:flags=lanczos,format=yuvj420p`;
+        : `scale=${sw}:${sh}:flags=fast_bilinear,format=yuvj420p`;
       args = [
         '-hide_banner', '-loglevel', 'error',
         '-probesize', '32', '-analyzeduration', '0', '-fpsprobesize', '0',
@@ -632,8 +632,8 @@ export class H264StreamEncoder {
             '-pix_fmt', 'yuv420p',
             '-preset', 'ultrafast',
             '-tune', 'zerolatency',
-            '-threads', '1',
-            '-x264-params', 'repeat-headers=1:annexb=1:ref=1:rc-lookahead=0:sync-lookahead=0:bframes=0:sliced-threads=0',
+            '-threads', '2',
+            '-x264-params', 'repeat-headers=1:annexb=1:ref=1:rc-lookahead=0:sync-lookahead=0:bframes=0:sliced-threads=1',
             '-g', String(gopSize),
             '-b:v', `${opts.bitrateKbps}k`,
             '-maxrate', `${maxRateKbps}k`,

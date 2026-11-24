@@ -40,7 +40,7 @@ O aplicativo possui **dois domínios funcionais independentes** e **uma aba de c
 | `material3.Icon` | `NuvioIcon` construído sobre `androidx.compose.foundation.Image` com `rememberVectorPainter(icon)` e `ColorFilter.tint(tint)`. |
 | `material3.Slider` (`MouseScreen.kt`) | `NuvioGlassSlider`: controle customizado em `Canvas` + gesto horizontal, faixa de toque **`48.dp`**, zero Material 3. |
 | `material3.Switch` (`SettingsScreen.kt`) | `NuvioGlassSwitch`: switch customizado (`52.dp × 32.dp` visual dentro de área de toque de `48.dp` na linha inteira), respeitando `LocalHapticsEnabled`. |
-| `android:Theme.Material.NoActionBar` (`themes.xml`) | Tema base Android enxuto sem atributos M3 (`android:windowBackground`, edge-to-edge sem barra tonal). |
+| `android:Theme.Material.NoActionBar` (`themes.xml`) | Tema base Android DayNight sem atributos M3: `values/themes.xml` (Claro: `windowBackground`, `statusBarColor` e `navigationBarColor` em `#EEF2F7` + `windowLightStatusBar = true`) e `values-night/themes.xml` (Escuro: `#090A0D` + `windowLightStatusBar = false`), eliminando o flash preto `#040609` ao abrir o app no Tema Claro. |
 
 ### 2.2 Regra de Camada: Onde Vai Vidro e Onde Nunca Vai Vidro
 
@@ -101,9 +101,9 @@ Centralizar tokens, variantes, efeitos de GPU e fallbacks em um único arquivo `
 | `TextSecondary` | `#B4B8C2` | `#475569` | `>= 5.8:1` (`AA+`) |
 | `TextMuted` | `#8B92A0` | `#526074` | `>= 4.6:1` (`AA` — corrigido em relação ao grafite escuro antigo) |
 | `ClearOverlayText` | `#FFFFFF` | `#FFFFFF` (com scrim `+35%`) | `>= 5.5:1` sobre mídia clara ou escura |
-| `StatusConnected` | `#34D399` | `#059669` | `>= 4.5:1` |
-| `StatusWarning` | `#FBBF24` | `#B45309` | `>= 4.5:1` |
-| `StatusError` | `#F87171` | `#DC2626` | `>= 4.5:1` |
+| `StatusConnected` | `#34D399` | `#047857` | `>= 5.04:1` em `#F3F6FB` / `5.48:1` em `#FFFFFF` (`AA` — corrigido de `#059669` que tinha `3.47:1`) |
+| `StatusWarning` | `#FBBF24` | `#B45309` | `>= 5.19:1` em `#EEF2F8` / `5.81:1` em `#FFFFFF` (`AA`) |
+| `StatusError` | `#F87171` | `#DC2626` (`#B91C1C` sobre célula `#F3F6FB`) | `>= 4.83:1` em `#FFFFFF` / `6.16:1` com `#B91C1C` (`AA`) |
 | `ContextNavAccent` | `#E5E7EB` (prata óptico) | `#0F172A` | Indicador discreto de modo `Navegar` |
 | `ContextPlayerAccent` | `#C4B5FD` (lavanda suave) | `#6D28D9` | Indicador discreto de modo `Player` |
 | `ContextSearchAccent` | `#FCD34D` (âmbar suave) | `#B45309` | Indicador discreto de modo `Teclado` |
@@ -490,9 +490,9 @@ Para garantir ergonomia, legibilidade sem truncamento (`...`) e alvos mínimos d
 
 | Classe Responsiva | Condição (`BoxWithConstraints` + `LocalDensity`) | `horizontalPadding` | `rockerWidth` | `rockerHeight` | `dpadDiameter` (com clamp horizontal) | `centerOkSize` | `satelliteSize` (visual / hitbox) | `sideGap` |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`CompactNarrow`** | `maxWidth < 345.dp` **ou** `maxHeight < 430.dp` | `10.dp` | `48.dp` | `144.dp` (3 zonas `48×48.dp`) | `minOf(156.dp, maxWidth - 132.dp).coerceAtLeast(144.dp)` | `48.dp` | `36.dp` visual em `48×48.dp` | `4.dp` |
-| **`CompactStandard`** | `maxWidth in 345.dp..375.dp` **ou** `maxHeight in 430.dp..490.dp` **ou** `isPlayer` **ou** `isSheetExpanded` **ou** `fontScale >= 1.20f` | `14.dp` | `48.dp` (`<360.dp`) / `50.dp` (`>=360.dp`) | `148.dp` (`Player`) / `156.dp` (`Navegar`) | `minOf(if (isPlayer) 160.dp else 166.dp, maxWidth - (horizontalPadding * 2) - (rockerWidth * 2) - 16.dp)` | `56.dp` | `38.dp` visual em `48×48.dp` | `6.dp` (`Player`) / `8.dp` |
-| **`ExpandedComfort`** | `maxWidth > 375.dp` **e** `maxHeight > 490.dp` **e** `!isPlayer` **e** `!isSheetExpanded` | `16.dp` | `52.dp` | `170.dp` | `186.dp` | `68.dp` | `42.dp` visual em `48×48.dp` | `12.dp` |
+| **`CompactNarrow`** | `maxWidth < 345.dp` **ou** `maxHeight < 430.dp` | `8.dp` | `48.dp` | `144.dp` (3 zonas `48×48.dp`) | `minOf(156.dp, maxWidth - 128.dp).coerceAtLeast(156.dp)` | `48.dp` | `36.dp` visual em `48×48.dp` | `4.dp` |
+| **`CompactStandard`** | `maxWidth in 345.dp..375.dp` **ou** `maxHeight in 430.dp..490.dp` **ou** `isPlayer` **ou** `isSheetExpanded` **ou** `fontScale >= 1.20f` | `14.dp` | `48.dp` (`<360.dp`) / `50.dp` (`>=360.dp`) | `148.dp` (`Player`) / `156.dp` (`Navegar`) | `minOf(if (isPlayer) 160.dp else 166.dp, maxWidth - (horizontalPadding * 2) - (rockerWidth * 2) - 16.dp)` | `48.dp` (`Player`) / `52.dp` (`Navegar`) | `38.dp` visual em `48×48.dp` | `6.dp` (`Player`) / `8.dp` |
+| **`ExpandedComfort`** | `maxWidth > 375.dp` **e** `maxHeight > 490.dp` **e** `!isPlayer` **e** `!isSheetExpanded` | `16.dp` | `52.dp` | `170.dp` | `186.dp` | `64.dp` | `42.dp` visual em `48×48.dp` | `12.dp` |
 
 - **Invariantes de Acessibilidade no Cockpit:**
   1. **Folga horizontal mínima garantida:** `dpadDiameter` nunca ultrapassa `maxWidth - (horizontalPadding * 2) - (rockerWidth * 2) - 16.dp` (`>= 8.dp` de respiro entre cada Rocker e o anel do D-Pad).
@@ -630,6 +630,101 @@ O aplicativo Android e o Windows Desktop Companion verificam periodicamente a ú
    - Caso a rede caia ou o checksum/download falhe, exibe bloco opaco com borda `StatusError` (`#F87171` escuro / `#DC2626` claro), explicação curta e botões **`Fechar / Close`** e **`Tentar novamente / Retry`** (`>= 48.dp`).
 4. **Movimento e Acessibilidade:**
    - Entrada e saída do popup usam exclusivamente `NuvioMotion.morphEnter(reducedMotion)` e `NuvioMotion.morphExit(reducedMotion)` (`scale 0.98f -> 1f` + `fade`, `300ms` entrada / `260ms` saída, física `spring`, somente GPU `transform`/`opacity` a `60fps`). Quando `LocalReducedMotion` (ou `prefers-reduced-motion: reduce` no Desktop) estiver ativo, a transição é instantânea (`snap`).
+
+---
+
+### 5.12 Especificação de Alinhamento P2 (v0.5.3): Hitboxes `>= 48.dp`, Geometria sem Sobreposição e Contraste WCAG AA (Android & Desktop)
+
+Esta seção consolida as definições exatas de geometria, tokens e contraste para os 3 grupos de pendências visuais e de acessibilidade identificados na auditoria estática do P2:
+
+#### 5.12.1 Grupo 1 — Android: Hitboxes `>= 48.dp` e Eliminação de Sobreposição de Alvos de Toque
+
+1. **`NuvioRemoteRoot.kt` — `AppsSubTabSegmentedControl` (`[ Assistir | Música | Módulos ]`):**
+   - **Problema anterior:** o `Row` externo aplicava `.height(36.dp).clip(CircleShape)`, cortando os filhos `defaultMinSize(48.dp, 48.dp)` para `36.dp` de altura real de toque.
+   - **Geometria e Camada Especificadas (Padrão Concêntrico idêntico ao `ContextSegmentedControl`):**
+     - **Container externo de toque (`Box` raiz):** `Modifier.height(48.dp).wrapContentWidth()`, **sem** clip de `36.dp`.
+     - **Trilha visual interna de fundo:** `Box(Modifier.matchParentSize().padding(vertical = 6.dp).clip(CircleShape).background(scheme.contentCellSurface).border(1.dp, scheme.contentBorder, CircleShape))` -> altura visual exata de **`36.dp`** com `6.dp` de zona de toque transparente acima e abaixo. **Superfície opaca** (pois está dentro da `NuvioGlassTopBar` que já usa `GlassVariant.REGULAR`).
+     - **Slots de clique das 3 sub-abas (`Row` sobreposto):** cada item é um `Box(Modifier.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp).clip(CircleShape).clickable(...).padding(horizontal = 2.dp), contentAlignment = Alignment.Center)` garantindo **hitbox real `>= 48.dp × 48.dp`**.
+     - **Pílula ativa visual interna:** `Box(Modifier.height(30.dp).clip(CircleShape).background(Brush.verticalGradient(listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom))).padding(horizontal = 10.dp))` (`3.dp` de respiro concêntrico dentro da trilha de `36.dp`), texto `scheme.pillActiveFg` (ativo) / `scheme.textSecondary` (inativo).
+
+2. **`RemoteTextInputBar.kt` — `SpecialKeyPill` e `SpecialKeysSection`:**
+   - **Problema anterior:** `SpecialKeyPill` usava `.height(48.dp).widthIn(min = 42.dp)` e a Linha 1 com 6 teclas de pesos assimétricos (`0.86f..1.26f`) dentro de `padding(horizontal = 10.dp)` reduzia `ESC`, `TAB` e `WIN` para `~41.dp` de largura em telas de `360.dp`.
+   - **Geometria Especificada (`>= 48.dp × 48.dp` em 100% das teclas especiais):**
+     - **Em `SpecialKeyPill`:** substituir `.height(48.dp).widthIn(min = 42.dp)` por **`.defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`**. Manter a pílula visual interna com `height = 32.dp`, `RoundedCornerShape(10.dp)` (`8.dp` de margem vertical de toque transparente acima e abaixo) e `padding(horizontal = 2.dp)`.
+     - **Em `RemoteTextInputBar` / `SpecialKeysSection`:**
+       - Reduzir o `padding` horizontal interno da barra `RemoteTextInputBar` de `10.dp` para **`6.dp`** (liberando `316.dp` úteis numa barra de `328.dp` em tela de `360.dp`).
+       - Na **Linha 1** (`ESC`, `TAB`, `ALT+TAB`, `WIN`, `CTRL+C`, `CTRL+V`), usar `horizontalArrangement = Arrangement.spacedBy(4.dp)` (`5 × 4.dp = 20.dp`, restando `296.dp` para 6 teclas) e **pesos uniformes `Modifier.weight(1f)`** em todas as 6 teclas -> cada tecla recebe **`49.3.dp × 48.dp`** em telas de `360.dp` (`>= 48.dp` sem nenhuma tecla abaixo do limite!). Usar `fontSize = 10.sp` (`letterSpacing = -0.01.em`) para que `ALT+TAB`, `CTRL+C` e `CTRL+V` caibam em `49.3.dp` com zero truncamento.
+       - Na **Linha 2** (`Del`, `▲`, `▼`, `Space/Espaço`, `Enter` — 5 teclas), com `spacedBy(4.dp)` e pesos `1f, 1f, 1f, 1.35f, 1.05f`, todas as 5 teclas têm largura **`>= 54.dp × 48.dp`**.
+       - **Fallback para telas ultra-estreitas (`maxWidth < 352.dp`):** quando a largura interna da barra for `< 308.dp`, aplicar `Modifier.horizontalScroll(rememberScrollState())` nas linhas de `SpecialKeysSection`, impedindo que qualquer `SpecialKeyPill` seja comprimida abaixo de `48.dp × 48.dp`.
+
+3. **`RemoteScreen.kt` — Eliminação da Sobreposição de `~6.dp` no `PrecisionDPadRing`:**
+   - **Problema anterior:** `PrecisionDPadRing` aplicava `.padding(6.dp)` no container circular e usava `centerOkSize = 56.dp` tanto para `dpadDiameter = 166.dp` (`Navegar`) quanto para `dpadDiameter = 160.dp` (`Player`). Em `160.dp`, o espaço útil interno após `padding(6.dp)` era `160 - 12 = 148.dp`, enquanto a soma vertical dos hitboxes era `48.dp (Up) + 56.dp (OK) + 48.dp (Down) = 152.dp` (gerando `4.dp` a `8.dp` de sobreposição vertical/horizontal entre o botão `OK` e as 4 setas cardinais, além de proximidade excessiva nas diagonais com `majorSpan = 52.dp`).
+   - **Geometria Matemática Limpa (Zero Sobreposição Interna ou Externa):**
+     - **Padding interno do anel `PrecisionDPadRing`:** reduzir de `6.dp` para **`2.dp`** (deslocando os hitboxes de `48.dp` das 4 setas cardinais `4.dp` para fora, até `2.dp` da borda do anel). Para manter os ícones das setas (`28.dp`) exatamente na mesma posição óptica sobre a faixa do anel, adicionar `padding` interno de compensação de `4.dp` na direção da borda dentro de `DPadDirectionButton`.
+     - **Invariante de Diâmetro vs. `OK` ($\text{dpadDiameter} - 4\text{dp} \ge 48\text{dp} + \text{centerOkSize} + 48\text{dp} + 8\text{dp}$):**
+       - `CompactNarrow` (`dpadDiameter = 156.dp`, interno `152.dp`): `centerOkSize = 48.dp` -> `48 + 48 + 48 = 144.dp <= 152.dp` (**`4.dp` de folga livre** entre `OK` e cada seta).
+       - `CompactStandard — Player` (`dpadDiameter = 160.dp`, interno `156.dp`): `centerOkSize = 48.dp` -> `48 + 48 + 48 = 144.dp <= 156.dp` (**`6.dp` de folga livre** entre `OK` e cada seta).
+       - `CompactStandard — Navegar` (`dpadDiameter = 166.dp`, interno `162.dp`): `centerOkSize = 52.dp` -> `48 + 52 + 48 = 148.dp <= 162.dp` (**`7.dp` de folga livre** entre `OK` e cada seta).
+       - `ExpandedComfort` (`dpadDiameter = 186.dp`, interno `182.dp`): `centerOkSize = 64.dp` -> `48 + 64 + 48 = 160.dp <= 182.dp` (**`11.dp` de folga livre** entre `OK` e cada seta).
+     - **Separador diagonal entre setas vizinhas (`majorSpan` em `PrecisionDPadRing`):** definir `val majorSpan = if (diameter <= 166.dp) 48.dp else 54.dp`. Com `48.dp × 48.dp` em anéis `<= 166.dp` (`>= 152.dp` internos), `Up` (`x = 52..100.dp, y = 0..48.dp`) e `Left` (`x = 0..48.dp, y = 52..100.dp`) mantêm **`>= 4.dp` de separação física nos dois eixos**, eliminando 100% das interseções de hitboxes.
+
+---
+
+#### 5.12.2 Grupo 2 — Android: Contraste e Tema Claro (WCAG AA `>= 4.5:1`)
+
+1. **`QrScannerDialog.kt` (Botões Primários sobre Câmera/Preto e Scrim `+35%` em `GlassVariant.CLEAR`):**
+   - **Problema anterior:** no Tema Claro (`LightNuvioColors`), `scheme.pillActiveBgTop/Bottom` vale `#181C24 -> #0B0D12` (grafite escuro). Como o fundo do `QrScannerDialog` é sempre `Color.Black` (`#000000`) / feed de câmera, os botões `"Autorizar câmera"` (`CameraPermissionFallback`) e `"Cancelar"` (`QrBottomActionPill(primary = true)`) ficavam com superfície `#181C24` sobre `#000000` (contraste de superfície `1.18:1`). Além disso, as cápsulas `GlassVariant.CLEAR` não declaravam `isBackdropLight = true` nem `captureStageBackdrop = false`.
+   - **Especificação Exata:**
+     - **Pílulas Primárias sobre Câmera (`CameraPermissionFallback` e `QrBottomActionPill` quando `primary == true`):** usar **sempre** os tokens claros de overlay de mídia (`scheme.clearPillActiveBgTop` **`#FFFFFF`** -> `scheme.clearPillActiveBgBottom` **`#E4E4E7`** para o fundo, e `scheme.clearPillActiveFg` **`#090A0D`** para texto e ícone), em ambos os temas (Claro e Escuro).
+       - *Contraste resultante:* superfície da pílula `#FFFFFF / #E4E4E7` contra fundo `#000000` = **`16.8:1` a `21.0:1` (`AAA`)**; texto `#090A0D` sobre a pílula = **`15.9:1` (`AAA`)**.
+     - **Cápsulas Flutuantes `GlassVariant.CLEAR` (`QrScannerOverlayUi` — Cabeçalho, Pílula `"Detectado"` e Botão Secundário `"Digitar código"`):**
+       - Passar **`isBackdropLight = true`** e **`captureStageBackdrop = false`** em todas as chamadas `.nuvioGlass(..., variant = GlassVariant.CLEAR, elevated = true, isBackdropLight = true, captureStageBackdrop = false)`.
+       - Aplicar `color = scheme.clearOverlayText` (`#FFFFFF`) e **`shadow = ClearContentShadow`** em todos os `NuvioText` dessas cápsulas.
+       - *Contraste resultante:* com o scrim adaptativo de `+35%` ativo sobre o véu `CLEAR` + `ClearContentShadow`, o texto branco `#FFFFFF` mantém **`>= 5.6:1` (`WCAG AA+`)** mesmo quando a câmera aponta para um monitor ou parede branca.
+
+2. **`ScreenSharePortrait.kt` / `ScreenShareScreen.kt` — `ZoomResetPill` (`"1x"`) no Modo Retrato:**
+   - **Problema anterior:** `PortraitScreenShareContent` (`ScreenSharePortrait.kt`, linha 100) chamava `VideoStreamViewport(...)` omitindo o parâmetro `isBackdropLight = isBackdropLight` (caindo no default `false`), deixando a `ZoomResetPill` sem o scrim de `+35%` ao dar zoom sobre tela clara do PC no modo retrato.
+   - **Especificação Exata:**
+     - Em `ScreenSharePortrait.kt` (linha 100), passar **`isBackdropLight = isBackdropLight`** para `VideoStreamViewport(...)`.
+     - `ZoomResetPill` mantém `GlassVariant.CLEAR`, `isBackdropLight = isBackdropLight`, `captureStageBackdrop = false`, `resting = false`, `color = scheme.clearOverlayText` (`#FFFFFF`) e `shadow = ClearContentShadow` (**contraste `>= 5.5:1` WCAG AA** sobre vídeo claro ou escuro).
+
+3. **`res/values/themes.xml` e `res/values-night/themes.xml` — Eliminação do Flash Preto no Tema Claro:**
+   - **Problema anterior:** `values/themes.xml` fixava `#040609` para `windowBackground`, `statusBarColor` e `navigationBarColor`, gerando flash preto na abertura do app quando o Android estava em Tema Claro.
+   - **Especificação Exata DayNight:**
+
+| Arquivo de Recurso | Atributo XML | Valor Hex / Booleano | Justificativa Visual |
+| :--- | :--- | :--- | :--- |
+| **`res/values/themes.xml`** *(Tema Claro)* | `parent` | `android:Theme.DeviceDefault.Light.NoActionBar` *(ou `Theme.Material.Light.NoActionBar`)* | Base nativa clara sem Material 3 Compose. |
+| **`res/values/themes.xml`** *(Tema Claro)* | `android:windowBackground` | **`#EEF2F7`** | Idêntico a `LightNuvioColors.canvasBackground`, zero flash na abertura. |
+| **`res/values/themes.xml`** *(Tema Claro)* | `android:statusBarColor` / `android:navigationBarColor` | **`#EEF2F7`** | Transição contínua com o fundo raiz do Tema Claro. |
+| **`res/values/themes.xml`** *(Tema Claro)* | `android:windowLightStatusBar` | **`true`** | Ícones escuros na barra de status do sistema sobre `#EEF2F7`. |
+| **`res/values-night/themes.xml`** *(Tema Escuro)* | `parent` | `android:Theme.DeviceDefault.NoActionBar` *(ou `Theme.Material.NoActionBar`)* | Base nativa escura para sala de TV. |
+| **`res/values-night/themes.xml`** *(Tema Escuro)* | `android:windowBackground` | **`#090A0D`** | Idêntico a `DarkNuvioColors.canvasBackground`. |
+| **`res/values-night/themes.xml`** *(Tema Escuro)* | `android:statusBarColor` / `android:navigationBarColor` | **`#090A0D`** | Sem salto de tom entre splash nativa e Compose. |
+| **`res/values-night/themes.xml`** *(Tema Escuro)* | `android:windowLightStatusBar` | **`false`** | Ícones claros na barra de status sobre `#090A0D`. |
+
+---
+
+#### 5.12.3 Grupo 3 — Desktop Companion: Tabela Final de Tokens CSS (`desktop/ui/styles.css`, WCAG AA `>= 4.5:1`)
+
+Para garantir **contraste WCAG AA (`>= 4.5:1`)** em todas as superfícies opacas do Desktop Companion (`--bg-stage`, `--card-bg`, `--cell-bg` e interior dos chips `.chip-online` / `.chip-warn`) tanto no Tema Escuro quanto no Tema Claro:
+
+| Variável CSS (`desktop/ui/styles.css`) | Tema Escuro (`:root`) | Contraste Escuro (`vs #13161E / #191D28`) | Tema Claro (`prefers-color-scheme: light`) | Contraste Claro (`vs #FFFFFF / #F3F6FB`) | Status / Mudança |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `--bg-stage` | `#090B12` | — | `#EEF2F8` | — | Mantido |
+| `--card-bg` | `#13161E` | — | `#FFFFFF` | — | Mantido (100% opaco) |
+| `--cell-bg` | `#191D28` | — | `#F3F6FB` | — | Mantido (100% opaco) |
+| `--text-primary` | `#F8FAFC` | `16.4:1` / `14.6:1` (`AAA`) | `#0F172A` | `17.8:1` / `16.4:1` (`AAA`) | Mantido |
+| `--text-secondary` | `#B4B8C2` *(ou `#94A3B8`)* | `8.54:1` / `7.60:1` (`AAA`) | `#475569` | `7.58:1` / `6.98:1` (`AAA`) | Alinhado ao spec |
+| **`--text-muted`** | **`#8E95A5`** *(ou `#8B92A0`)* | **`5.22:1`** em `#13161E` · **`4.64:1`** em `#191D28` · **`6.28:1`** em `#090B12` (`AA`) | **`#526074`** | **`6.40:1`** em `#FFFFFF` · **`5.89:1`** em `#F3F6FB` (`AA`) | **Corrigido** (era `#64748B` com `3.81:1` no escuro e `4.41:1` em `--cell-bg` claro) |
+| **`--status-online`** | **`#34D399`** | **`8.95:1`** em `#13161E` · **`7.96:1`** em `#191D28` (`AAA`) | **`#047857`** | **`5.48:1`** em `#FFFFFF` · **`5.04:1`** em `#F3F6FB` · **`4.86:1`** no `.chip-online` (`AA`) | **Corrigido no Claro** (era `#059669` com `3.50:1`) |
+| **`--status-warn`** | **`#FBBF24`** | **`10.4:1`** em `#13161E` · **`9.25:1`** em `#191D28` (`AAA`) | **`#B45309`** | **`5.81:1`** em `#FFFFFF` · **`5.35:1`** em `#F3F6FB` · **`5.12:1`** no `.chip-warn` (`AA`) | **Corrigido no Claro** (era `#D97706` com `2.95:1`) |
+| **`--status-danger`** | **`#F87171`** | **`6.38:1`** em `#13161E` · **`5.68:1`** em `#191D28` (`AA`) | **`#B91C1C`** *(ou `#DC2626`)* | **`6.60:1`** em `#FFFFFF` · **`6.16:1`** em `#F3F6FB` (`AA+`) | Reforçado no Claro para `>= 6.1:1` em `--cell-bg` |
+| **`--accent`** | **`#A5B4FC`** *(ou `#818CF8`)* | **`8.42:1` / `5.56:1`** (`AA+`) | **`#4F46E5`** | **`6.29:1`** em `#FFFFFF` · **`5.79:1`** em `#F3F6FB` (`AA`) | Mantido (`>= 5.5:1`) |
+
+- **Ajuste complementar das bordas/fundos de `.chip-online` e `.chip-warn` no Tema Claro (`@media (prefers-color-scheme: light)` em `desktop/ui/styles.css`):**
+  - `.chip-online`: `background: rgba(4, 120, 87, 0.12); border-color: rgba(4, 120, 87, 0.32); color: var(--status-online);` (garante `4.86:1` dentro da própria pílula sobre fundo claro).
+  - `.chip-warn`: `background: rgba(180, 83, 9, 0.12); border-color: rgba(180, 83, 9, 0.32); color: var(--status-warn);` (garante `5.12:1` dentro da própria pílula sobre fundo claro).
 
 ---
 

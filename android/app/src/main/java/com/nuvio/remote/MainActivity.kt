@@ -35,6 +35,7 @@ import com.nuvio.remote.webrtc.ScreenStreamController
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -53,6 +54,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var controller: ScreenStreamController
     private lateinit var wifiLatencyLock: WifiLatencyLock
     private var activeTab: NuvioTab = NuvioTab.REMOTE
+    private val activeTabFlow = MutableStateFlow(NuvioTab.REMOTE)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -69,6 +71,7 @@ class MainActivity : ComponentActivity() {
             }
             var tab by remember { mutableStateOf(initialTab) }
             activeTab = tab
+            LaunchedEffect(tab) { activeTabFlow.value = tab }
             var hapticsEnabled by remember { mutableStateOf(appPrefs.hapticsEnabled) }
             var appLanguage by remember { mutableStateOf(AppLanguage.fromWire(appPrefs.appLanguage)) }
             val resolvedLanguage = resolveAppLanguage(appLanguage)
@@ -140,8 +143,10 @@ class MainActivity : ComponentActivity() {
                 conn.appInForegroundState,
                 conn.connState,
                 conn.isTunnelActive,
-            ) { foreground, state, tunnel ->
-                foreground && state is ConnState.Connected && !tunnel
+                activeTabFlow,
+            ) { foreground, state, tunnel, currentTab ->
+                val needsLowLatency = currentTab == NuvioTab.TRACKPAD || currentTab == NuvioTab.SCREEN
+                foreground && state is ConnState.Connected && !tunnel && needsLowLatency
             }.collect { active ->
                 wifiLatencyLock.setActive(active)
             }

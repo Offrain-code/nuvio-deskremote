@@ -44,6 +44,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.nuvio.remote.connection.NuvioScreenState
@@ -270,43 +271,40 @@ private fun Modifier.drawAmbientBackdropLayer(
     scheme: NuvioColorScheme,
     accent: StateAccent,
 ): Modifier = drawWithCache {
+    val baseGradient = Brush.verticalGradient(
+        colors = listOf(
+            scheme.canvasGradientTop,
+            scheme.canvasBackground,
+            scheme.canvasGradientBottom,
+        ),
+    )
+    val topGlow = Brush.radialGradient(
+        0.0f to scheme.ambientGlowPrimary,
+        0.46f to scheme.ambientGlowSecondary.copy(alpha = scheme.ambientGlowSecondary.alpha * 0.65f),
+        0.82f to scheme.ambientGlowSecondary.copy(alpha = scheme.ambientGlowSecondary.alpha * 0.14f),
+        1.0f to Color.Transparent,
+        center = Offset(size.width * 0.50f, size.height * 0.36f),
+        radius = size.maxDimension * 0.58f,
+    )
+    val bottomGlowColor = if (accent.surfaceTint.alpha > 0.01f) {
+        accent.primary.copy(alpha = if (scheme.isDark) 0.10f else 0.12f)
+    } else {
+        scheme.ambientGlowTertiary
+    }
+    val bottomGlow = Brush.radialGradient(
+        0.0f to bottomGlowColor,
+        0.50f to bottomGlowColor.copy(alpha = bottomGlowColor.alpha * 0.30f),
+        1.0f to Color.Transparent,
+        center = Offset(size.width * 0.50f, size.height * 0.80f),
+        radius = size.maxDimension * 0.50f,
+    )
     onDrawWithContent {
         backdropState.layer.record(
             size = IntSize(size.width.toInt().coerceAtLeast(1), size.height.toInt().coerceAtLeast(1)),
         ) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    colors = listOf(
-                        scheme.canvasGradientTop,
-                        scheme.canvasBackground,
-                        scheme.canvasGradientBottom,
-                    ),
-                ),
-            )
-            drawRect(
-                brush = Brush.radialGradient(
-                    0.0f to scheme.ambientGlowPrimary,
-                    0.46f to scheme.ambientGlowSecondary.copy(alpha = scheme.ambientGlowSecondary.alpha * 0.65f),
-                    0.82f to scheme.ambientGlowSecondary.copy(alpha = scheme.ambientGlowSecondary.alpha * 0.14f),
-                    1.0f to Color.Transparent,
-                    center = Offset(size.width * 0.50f, size.height * 0.36f),
-                    radius = size.maxDimension * 0.58f,
-                ),
-            )
-            val bottomGlowColor = if (accent.surfaceTint.alpha > 0.01f) {
-                accent.primary.copy(alpha = if (scheme.isDark) 0.10f else 0.12f)
-            } else {
-                scheme.ambientGlowTertiary
-            }
-            drawRect(
-                brush = Brush.radialGradient(
-                    0.0f to bottomGlowColor,
-                    0.50f to bottomGlowColor.copy(alpha = bottomGlowColor.alpha * 0.30f),
-                    1.0f to Color.Transparent,
-                    center = Offset(size.width * 0.50f, size.height * 0.80f),
-                    radius = size.maxDimension * 0.50f,
-                ),
-            )
+            drawRect(brush = baseGradient)
+            drawRect(brush = topGlow)
+            drawRect(brush = bottomGlow)
         }
         drawLayer(backdropState.layer)
     }
@@ -330,9 +328,14 @@ fun Modifier.nuvioGlass(
     resting: Boolean = false,
 ): Modifier = composed {
     val scheme = LocalNuvioColors.current
+    val density = LocalDensity.current
     val backdrop = if (captureStageBackdrop && variant != GlassVariant.CLEAR) LocalGlassBackdrop.current else null
-    val underlayLayer = rememberGraphicsLayer()
     val tier = remember { resolveGlassApiTier() }
+    val underlayLayer = if (backdrop != null && tier != GlassApiTier.LEGACY_PRE_31) {
+        rememberGraphicsLayer()
+    } else {
+        null
+    }
     val reducedMotion = LocalReducedMotion.current
     val restingWeight by animateFloatAsState(
         targetValue = if (resting) 1f else 0f,
@@ -342,15 +345,15 @@ fun Modifier.nuvioGlass(
     var globalPosition by remember { mutableStateOf(Offset.Zero) }
     var boundsSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val blurRadiusPx = if (elevated) 28f else 22f
+    val blurRadiusPx = with(density) { (if (elevated) 24.dp else 18.dp).toPx() }
     val saturation = if (variant == GlassVariant.CLEAR) 1.65f else 1.45f
     val lensStrength = if (variant == GlassVariant.CLEAR) 6.5f else 5.0f
 
     val lensShader = remember(tier, backdrop != null) {
-        val useLens = backdrop != null &&
+        val canUseLens = backdrop != null &&
             tier == GlassApiTier.LENS_33_PLUS &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-        if (useLens) createLensShader() else null
+        if (canUseLens) createLensShader() else null
     }
     val opticalRenderEffect = remember(tier, boundsSize, blurRadiusPx, saturation, lensShader, backdrop != null) {
         backdrop?.let {
@@ -368,38 +371,79 @@ fun Modifier.nuvioGlass(
             val outline = shape.createOutline(size, layoutDirection, this)
             val clipPath = outlineToPath(outline)
             onDrawBehind {
-                resolveLiveBackdrop(backdrop, tier, boundsSize)?.let { liveBackdrop ->
-                    val relX = liveBackdrop.rootOrigin.x - globalPosition.x
-                    val relY = liveBackdrop.rootOrigin.y - globalPosition.y
-                    underlayLayer.clip = true
-                    underlayLayer.renderEffect = opticalRenderEffect
-                    underlayLayer.record(size = boundsSize) {
-                        translate(left = relX, top = relY) { drawLayer(liveBackdrop.layer) }
-                    }
-                    clipPath(clipPath) { drawLayer(underlayLayer) }
-                }
-                val alphaScale = surfaceAlpha.coerceIn(0.2f, 1f)
-                val useStructuredFallback =
-                    tier == GlassApiTier.LEGACY_PRE_31 || (variant != GlassVariant.CLEAR && backdrop == null)
-                val clearAlphas = if (variant == GlassVariant.CLEAR) {
-                    val active = resolveClearSurfaceAlphas(tier, isBackdropLight, resting = false, alphaScale)
-                    val rest = resolveClearSurfaceAlphas(tier, isBackdropLight, resting = true, alphaScale)
-                    active.interpolateTo(rest, restingWeight)
-                } else {
-                    null
-                }
-                val config = GlassSurfaceDrawConfig(
-                    variant,
-                    useStructuredFallback,
-                    elevated,
-                    pressed,
-                    accentTint,
-                    alphaScale,
-                    clearAlphas,
+                drawNuvioGlassLayer(
+                    scheme = scheme,
+                    backdrop = backdrop,
+                    underlayLayer = underlayLayer,
+                    renderEffect = opticalRenderEffect,
+                    tier = tier,
+                    boundsSize = boundsSize,
+                    globalPosition = globalPosition,
+                    clipPath = clipPath,
+                    outline = outline,
+                    variant = variant,
+                    elevated = elevated,
+                    pressed = pressed,
+                    accentTint = accentTint,
+                    isBackdropLight = isBackdropLight,
+                    surfaceAlpha = surfaceAlpha,
+                    restingWeight = restingWeight,
                 )
-                drawGlassSurfaceLayers(scheme = scheme, config = config, outline = outline)
             }
         }
+}
+
+@Suppress("LongParameterList")
+private fun DrawScope.drawNuvioGlassLayer(
+    scheme: NuvioColorScheme,
+    backdrop: NuvioGlassBackdropState?,
+    underlayLayer: GraphicsLayer?,
+    renderEffect: RenderEffect?,
+    tier: GlassApiTier,
+    boundsSize: IntSize,
+    globalPosition: Offset,
+    clipPath: Path,
+    outline: Outline,
+    variant: GlassVariant,
+    elevated: Boolean,
+    pressed: Boolean,
+    accentTint: Color,
+    isBackdropLight: Boolean,
+    surfaceAlpha: Float,
+    restingWeight: Float,
+) {
+    resolveLiveBackdrop(backdrop, tier, boundsSize)?.let { liveBackdrop ->
+        underlayLayer?.let { layer ->
+            val relX = liveBackdrop.rootOrigin.x - globalPosition.x
+            val relY = liveBackdrop.rootOrigin.y - globalPosition.y
+            layer.clip = true
+            layer.renderEffect = renderEffect
+            layer.record(size = boundsSize) {
+                translate(left = relX, top = relY) { drawLayer(liveBackdrop.layer) }
+            }
+            clipPath(clipPath) { drawLayer(layer) }
+        }
+    }
+    val alphaScale = surfaceAlpha.coerceIn(0.2f, 1f)
+    val useStructuredFallback =
+        tier == GlassApiTier.LEGACY_PRE_31 || (variant != GlassVariant.CLEAR && backdrop == null)
+    val clearAlphas = if (variant == GlassVariant.CLEAR) {
+        val active = resolveClearSurfaceAlphas(tier, isBackdropLight, resting = false, alphaScale)
+        val rest = resolveClearSurfaceAlphas(tier, isBackdropLight, resting = true, alphaScale)
+        active.interpolateTo(rest, restingWeight)
+    } else {
+        null
+    }
+    val config = GlassSurfaceDrawConfig(
+        variant,
+        useStructuredFallback,
+        elevated,
+        pressed,
+        accentTint,
+        alphaScale,
+        clearAlphas,
+    )
+    drawGlassSurfaceLayers(scheme = scheme, config = config, outline = outline)
 }
 
 private fun resolveLiveBackdrop(

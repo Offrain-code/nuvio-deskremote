@@ -1,7 +1,7 @@
 package com.nuvio.remote.ui.components
 
 import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -30,6 +30,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.input.pointer.pointerInput
@@ -128,11 +129,12 @@ fun NuvioGlassSwitch(
         animationSpec = NuvioMotion.smoothSpring(reducedMotion),
         label = "switchThumb",
     )
-    val thumbOffset by animateDpAsState(
-        targetValue = if (checked) 20.dp else 0.dp,
+    val thumbProgress by animateFloatAsState(
+        targetValue = if (checked) 1f else 0f,
         animationSpec = NuvioMotion.snappyPressSpring(reducedMotion),
         label = "switchOffset",
     )
+    val slidePx = with(LocalDensity.current) { 20.dp.toPx() }
 
     Box(
         modifier = modifier
@@ -159,7 +161,7 @@ fun NuvioGlassSwitch(
         ) {
             Box(
                 modifier = Modifier
-                    .offset(x = thumbOffset)
+                    .graphicsLayer { translationX = thumbProgress * slidePx }
                     .size(24.dp)
                     .clip(CircleShape)
                     .background(thumbColor),

@@ -62,6 +62,7 @@ import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
 import com.nuvio.remote.ui.i18n.LocalAppLanguage
 import com.nuvio.remote.ui.i18n.l10n
+import com.nuvio.remote.ui.theme.ClearContentShadow
 import com.nuvio.remote.ui.theme.GlassVariant
 import com.nuvio.remote.ui.theme.LocalHapticsEnabled
 import com.nuvio.remote.ui.theme.LocalNuvioColors
@@ -254,14 +255,18 @@ private fun CameraPermissionFallback(onRequestPermission: () -> Unit) {
                 modifier = Modifier
                     .height(40.dp)
                     .clip(CircleShape)
-                    .background(scheme.pillActiveBgTop)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(scheme.clearPillActiveBgTop, scheme.clearPillActiveBgBottom),
+                        ),
+                    )
                     .padding(horizontal = 18.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 NuvioText(
                     text = l10n("Allow camera", "Autorizar câmera"),
                     style = NuvioTypography.KeyLabelCompact,
-                    color = scheme.pillActiveFg,
+                    color = scheme.clearPillActiveFg,
                 )
             }
         }
@@ -284,6 +289,8 @@ private fun QrScannerOverlayUi(detectedLabel: String?, onManualFallback: () -> U
                     shape = RoundedCornerShape(20.dp),
                     variant = GlassVariant.CLEAR,
                     elevated = true,
+                    isBackdropLight = true,
+                    captureStageBackdrop = false,
                 )
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -292,6 +299,7 @@ private fun QrScannerOverlayUi(detectedLabel: String?, onManualFallback: () -> U
                 text = l10n("SCAN PAIRING QR CODE", "ESCANEAR QR CODE DO NUVIO"),
                 style = NuvioTypography.SectionMicroTitle,
                 color = Color.White,
+                shadow = ClearContentShadow,
             )
             NuvioText(
                 text = l10n(
@@ -300,6 +308,7 @@ private fun QrScannerOverlayUi(detectedLabel: String?, onManualFallback: () -> U
                 ),
                 style = NuvioTypography.KeyShortcutBadge,
                 color = Color.White.copy(alpha = 0.85f),
+                shadow = ClearContentShadow,
             )
         }
 
@@ -316,13 +325,20 @@ private fun QrScannerOverlayUi(detectedLabel: String?, onManualFallback: () -> U
             if (!detectedLabel.isNullOrBlank()) {
                 Box(
                     modifier = Modifier
-                        .nuvioGlass(shape = CircleShape, variant = GlassVariant.CLEAR, elevated = true)
+                        .nuvioGlass(
+                            shape = CircleShape,
+                            variant = GlassVariant.CLEAR,
+                            elevated = true,
+                            isBackdropLight = true,
+                            captureStageBackdrop = false,
+                        )
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     NuvioText(
                         text = detectedLabel,
                         style = NuvioTypography.KeyLabelCompact,
                         color = Color.White,
+                        shadow = ClearContentShadow,
                     )
                 }
             }
@@ -359,13 +375,21 @@ private fun QrBottomActionPill(
     modifier: Modifier = Modifier,
 ) {
     val scheme = LocalNuvioColors.current
-    val fg = if (primary) scheme.pillActiveFg else Color.White
+    val fg = if (primary) scheme.clearPillActiveFg else Color.White
     val boxMod = if (primary) {
         Modifier
             .clip(CircleShape)
-            .background(Brush.verticalGradient(listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom)))
+            .background(
+                Brush.verticalGradient(listOf(scheme.clearPillActiveBgTop, scheme.clearPillActiveBgBottom)),
+            )
     } else {
-        Modifier.nuvioGlass(shape = CircleShape, variant = GlassVariant.CLEAR, elevated = true)
+        Modifier.nuvioGlass(
+            shape = CircleShape,
+            variant = GlassVariant.CLEAR,
+            elevated = true,
+            isBackdropLight = true,
+            captureStageBackdrop = false,
+        )
     }
 
     Box(
@@ -388,7 +412,13 @@ private fun QrBottomActionPill(
             horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally),
         ) {
             NuvioIcon(imageVector = icon, contentDescription = label, tint = fg, modifier = Modifier.size(16.dp))
-            NuvioText(text = label, style = NuvioTypography.KeyLabelCompact, color = fg, maxLines = 1)
+            NuvioText(
+                text = label,
+                style = NuvioTypography.KeyLabelCompact,
+                color = fg,
+                shadow = if (primary) null else ClearContentShadow,
+                maxLines = 1,
+            )
         }
     }
 }

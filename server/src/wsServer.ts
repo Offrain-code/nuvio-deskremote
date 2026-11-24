@@ -11,6 +11,7 @@ import { error, info, warn } from './logger';
 import { ClientMessage, ServerMessage, parseClientMessage, ScreenName } from './protocol';
 import { ScreenStateMachine } from './state';
 import { InputInjector } from './injection/input';
+import { getClipboardTextNative, setClipboardTextNative } from './injection/win32';
 import { PinManager, TokenStore } from './auth';
 import { ScreenServer } from './screen/screenServer';
 import { GdiCapture } from './screen/capture';
@@ -117,6 +118,11 @@ export class CompanionServer {
       // ignore
     }
     this.screen.setStatusCb((status, profile, detail, monitor) => {
+      if (status === 'starting' || status === 'running') {
+        this.startCursorWatcher();
+      } else {
+        this.stopCursorWatcher();
+      }
       const msg: ServerMessage = {
         type: 'screen_status',
         status: status === 'error' ? 'stopped' : status,
@@ -127,6 +133,17 @@ export class CompanionServer {
       this.broadcastAuthed(msg);
     });
     this.screen.setFrameCb((ownerId, jpg, width, height, monitor, directCursorEmbedded) => {
+      let target: SocketWithMeta | null = null;
+      for (const s of this.sockets) {
+        if (s.readyState === ws.WebSocket.OPEN && s._authed && s._wantsScreen && ownerId && socketId(s) === ownerId) {
+          const maxBuffered = s._isTunnel ? 48 * 1024 : 64 * 1024;
+          if (!s._mjpegInFlight && s.bufferedAmount < maxBuffered) {
+            target = s;
+          }
+          break;
+        }
+      }
+      if (!target) return;
       // Binary frame: [0]=0x01 [1]=monitor [2..3]=w [4..5]=h [6..7]=cx*65535 [8..9]=cy*65535 [10]=visible [11]=needFallbackCursor + JPEG
       const cur = this.screen.cursorNorm();
       const header = Buffer.allocUnsafe(12);
@@ -139,19 +156,10 @@ export class CompanionServer {
       header.writeUInt8(cur.visible ? 1 : 0, 10);
       header.writeUInt8(directCursorEmbedded ? 0 : 1, 11);
       const packet = Buffer.concat([header, jpg]);
-      for (const s of this.sockets) {
-        if (s.readyState === ws.WebSocket.OPEN && s._authed && s._wantsScreen && ownerId && socketId(s) === ownerId) {
-          // Strict 1 MJPEG frame in flight per TCP socket: avoids Windows SO_SNDBUF queuing
-          // and prevents head-of-line blocking over ping/pong, audio, and mouse clicks.
-          const maxBuffered = s._isTunnel ? 48 * 1024 : 64 * 1024;
-          if (!s._mjpegInFlight && s.bufferedAmount < maxBuffered) {
-            s._mjpegInFlight = true;
-            s.send(packet, { binary: true }, () => {
-              s._mjpegInFlight = false;
-            });
-          }
-        }
-      }
+      target._mjpegInFlight = true;
+      target.send(packet, { binary: true }, () => {
+        target!._mjpegInFlight = false;
+      });
     });
     this.screen.setAudioCb((ownerId, pcmPacket) => {
       for (const s of this.sockets) {
@@ -211,29 +219,6 @@ export class CompanionServer {
       }
     }, 15000);
     this.pingTimer.unref?.();
-
-    // Sync Windows cursor coordinates at 40Hz when the physical mouse moves during Screen Share (draw_mouse=0)
-    this.cursorWatchTimer = setInterval(() => {
-      if (!this.screen.isRunning()) return;
-      const cur = this.screen.cursorNorm();
-      const ix = Math.round(Math.max(0, Math.min(1, cur.nx)) * 65535);
-      const iy = Math.round(Math.max(0, Math.min(1, cur.ny)) * 65535);
-      const vis = cur.visible ? 1 : 0;
-      if (
-        ix === this.lastBroadcastCursor.ix &&
-        iy === this.lastBroadcastCursor.iy &&
-        vis === this.lastBroadcastCursor.vis
-      ) {
-        return;
-      }
-      this.lastBroadcastCursor = { ix, iy, vis };
-      for (const s of this.sockets) {
-        if (s.readyState === ws.WebSocket.OPEN && s._authed && s._wantsScreen) {
-          this.sendCursorPacket(s);
-        }
-      }
-    }, 25);
-    this.cursorWatchTimer.unref?.();
 
     this.state.onChange((ev) => {
       const msg: ServerMessage = {
@@ -927,6 +912,42 @@ export class CompanionServer {
     }
   }
 
+  /** Starts the 40Hz cursor sync loop only while Screen Share is active (zero idle wakeups). */
+  private startCursorWatcher(): void {
+    if (this.cursorWatchTimer) return;
+    this.cursorWatchTimer = setInterval(() => {
+      if (!this.screen.isRunning()) {
+        this.stopCursorWatcher();
+        return;
+      }
+      const cur = this.screen.cursorNorm();
+      const ix = Math.round(Math.max(0, Math.min(1, cur.nx)) * 65535);
+      const iy = Math.round(Math.max(0, Math.min(1, cur.ny)) * 65535);
+      const vis = cur.visible ? 1 : 0;
+      if (
+        ix === this.lastBroadcastCursor.ix &&
+        iy === this.lastBroadcastCursor.iy &&
+        vis === this.lastBroadcastCursor.vis
+      ) {
+        return;
+      }
+      this.lastBroadcastCursor = { ix, iy, vis };
+      for (const s of this.sockets) {
+        if (s.readyState === ws.WebSocket.OPEN && s._authed && s._wantsScreen) {
+          this.sendCursorPacket(s);
+        }
+      }
+    }, 25);
+    this.cursorWatchTimer.unref?.();
+  }
+
+  private stopCursorWatcher(): void {
+    if (this.cursorWatchTimer) {
+      clearInterval(this.cursorWatchTimer);
+      this.cursorWatchTimer = null;
+    }
+  }
+
   /** Releases resources and exits when the primary port is already owned by another instance. */
   private shutdownOnConflict(): void {
     if (this.pingTimer) {
@@ -1400,11 +1421,14 @@ export class CompanionServer {
           this.reply(socket, { type: 'error', code: 'PAYLOAD_TOO_LARGE', message: 'Clipboard payload exceeds 128 KiB limit.' });
           return;
         }
-        await setWindowsClipboard(text);
+        if (!setClipboardTextNative(this.injector.getBind(), text)) {
+          await setWindowsClipboard(text);
+        }
         return;
       }
       case 'clipboard_get': {
-        const text = await getWindowsClipboard();
+        const nativeText = getClipboardTextNative(this.injector.getBind(), MAX_CLIPBOARD_BYTES);
+        const text = nativeText !== null ? nativeText : await getWindowsClipboard();
         this.reply(socket, { type: 'clipboard_data', text });
         return;
       }

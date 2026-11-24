@@ -102,6 +102,7 @@ internal fun PortraitScreenShareContent(
                     showFallbackCursor = showFallbackCursor,
                     directTouch = directTouch,
                     activeMonitor = activeMonitor,
+                    isBackdropLight = isBackdropLight,
                     hideFallbackFrame = hideFallbackFrame,
                     onSurfaceReady = onSurfaceReady,
                     onSurfaceRelease = onSurfaceRelease,

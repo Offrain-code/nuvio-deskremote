@@ -3,7 +3,6 @@ package com.nuvio.remote.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
@@ -22,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
@@ -673,18 +671,21 @@ private fun NuvioModeSegmentedControl(serverState: NuvioScreenState, onSelectSta
     }
     val lefts = remember { mutableStateListOf(0, 0, 0) }
     val widths = remember { mutableStateListOf(0, 0, 0) }
-    val targetLeft = with(density) { lefts[activeIdx].toDp() }
-    val targetWidth = with(density) { widths[activeIdx].toDp() }
-    val animLeft by animateDpAsState(
-        targetValue = targetLeft,
+    val animLeftPx by animateFloatAsState(
+        targetValue = lefts[activeIdx].toFloat(),
         animationSpec = NuvioMotion.smoothSpring(reducedMotion),
         label = "seg_left",
     )
-    val animWidth by animateDpAsState(
-        targetValue = targetWidth,
+    val animWidthPx by animateFloatAsState(
+        targetValue = widths[activeIdx].toFloat(),
         animationSpec = NuvioMotion.smoothSpring(reducedMotion),
         label = "seg_width",
     )
+    val padXPx = with(density) { 2.dp.toPx() }
+    val pillHeightPx = with(density) { 32.dp.toPx() }
+    val pillBrush = remember(scheme.pillActiveBgTop, scheme.pillActiveBgBottom) {
+        Brush.verticalGradient(listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom))
+    }
 
     Box(
         modifier = Modifier
@@ -698,21 +699,22 @@ private fun NuvioModeSegmentedControl(serverState: NuvioScreenState, onSelectSta
                 .padding(vertical = 6.dp)
                 .clip(CircleShape)
                 .background(scheme.contentCellSurface)
-                .border(1.dp, scheme.contentBorder, CircleShape),
+                .border(1.dp, scheme.contentBorder, CircleShape)
+                .graphicsLayer(),
         )
-        if (animWidth > 0.dp) {
-            Box(
-                modifier = Modifier
-                    .offset(x = animLeft + 2.dp)
-                    .width(animWidth)
-                    .height(32.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom),
-                        ),
-                    ),
-            )
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier.matchParentSize(),
+        ) {
+            if (animWidthPx > 0f) {
+                val top = (size.height - pillHeightPx) * 0.5f
+                val corner = pillHeightPx * 0.5f
+                drawRoundRect(
+                    brush = pillBrush,
+                    topLeft = androidx.compose.ui.geometry.Offset(animLeftPx + padXPx, top),
+                    size = androidx.compose.ui.geometry.Size(animWidthPx, pillHeightPx),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
+                )
+            }
         }
         Row(
             modifier = Modifier.padding(horizontal = 2.dp),
@@ -757,52 +759,65 @@ private fun AppsSubTabSegmentedControl(selectedTab: AppsSubTab, onSelect: (AppsS
     val scheme = LocalNuvioColors.current
     val lang = LocalAppLanguage.current
     val tabs = AppsSubTab.entries
-    Row(
+    Box(
         modifier = Modifier
-            .height(36.dp)
-            .clip(CircleShape)
-            .background(scheme.contentCellSurface)
-            .border(1.dp, scheme.contentBorder, CircleShape)
-            .padding(horizontal = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .height(48.dp)
+            .wrapContentWidth(),
+        contentAlignment = Alignment.CenterStart,
     ) {
-        tabs.forEach { tab ->
-            val selected = tab == selectedTab
-            Box(
-                modifier = Modifier
-                    .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                    ) { onSelect(tab) }
-                    .padding(horizontal = 2.dp),
-                contentAlignment = Alignment.Center,
-            ) {
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .padding(vertical = 6.dp)
+                .clip(CircleShape)
+                .background(scheme.contentCellSurface)
+                .border(1.dp, scheme.contentBorder, CircleShape),
+        )
+        Row(
+            modifier = Modifier.padding(horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            tabs.forEach { tab ->
+                val selected = tab == selectedTab
                 Box(
                     modifier = Modifier
-                        .height(30.dp)
+                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
                         .clip(CircleShape)
-                        .then(
-                            if (selected) {
-                                Modifier.background(
-                                    Brush.verticalGradient(listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom)),
-                                )
-                            } else {
-                                Modifier
-                            },
-                        )
-                        .padding(horizontal = 10.dp),
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) { onSelect(tab) }
+                        .padding(horizontal = 2.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    NuvioText(
-                        text = tab.label(lang),
-                        style = NuvioTypography.KeyLabelCompact.copy(
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
-                        ),
-                        color = if (selected) scheme.pillActiveFg else scheme.textSecondary,
-                        maxLines = 1,
-                        softWrap = false,
-                    )
+                    Box(
+                        modifier = Modifier
+                            .height(30.dp)
+                            .clip(CircleShape)
+                            .then(
+                                if (selected) {
+                                    Modifier.background(
+                                        Brush.verticalGradient(
+                                            listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom),
+                                        ),
+                                    )
+                                } else {
+                                    Modifier
+                                },
+                            )
+                            .padding(horizontal = 10.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        NuvioText(
+                            text = tab.label(lang),
+                            style = NuvioTypography.KeyLabelCompact.copy(
+                                fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            ),
+                            color = if (selected) scheme.pillActiveFg else scheme.textSecondary,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                    }
                 }
             }
         }
@@ -918,15 +933,16 @@ private fun NuvioGlassDock(selectedTab: NuvioTab, onSelectTab: (NuvioTab) -> Uni
                 .padding(horizontal = 5.dp),
         ) {
             val slotWidth = maxWidth / tabs.size
-            val pillOffset by animateDpAsState(
-                targetValue = slotWidth * selectedIndex,
+            val slotWidthPx = with(LocalDensity.current) { slotWidth.toPx() }
+            val pillIndexAnim by animateFloatAsState(
+                targetValue = selectedIndex.toFloat(),
                 animationSpec = NuvioMotion.smoothSpring(reducedMotion),
                 label = "dock_pill_offset",
             )
             Box(
                 modifier = Modifier
                     .align(Alignment.CenterStart)
-                    .offset(x = pillOffset)
+                    .graphicsLayer { translationX = pillIndexAnim * slotWidthPx }
                     .width(slotWidth)
                     .height(44.dp)
                     .clip(CircleShape)

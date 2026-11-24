@@ -1,21 +1,25 @@
 package com.nuvio.remote.connection
 
+import androidx.compose.runtime.Immutable
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URI
 
+@Immutable
 data class NuvioLyricWord(
     val word: String,
     val startMs: Long,
     val endMs: Long,
 )
 
+@Immutable
 data class NuvioLyricLine(
     val timeMs: Long?,
     val text: String,
     val words: List<NuvioLyricWord> = emptyList(),
 )
 
+@Immutable
 data class NuvioLyricsSheet(
     val kind: String = "none",
     val title: String? = null,
@@ -27,19 +31,38 @@ data class NuvioLyricsSheet(
 
     /** Index of the active lyric line for `positionMs` (with 150ms tolerance) or -1 if none. */
     fun activeLineIndex(positionMs: Long): Int {
-        if (!isSynced) return -1
+        if (!isSynced || lines.isEmpty()) return -1
+        val target = positionMs + 150L
+        if (lines.all { it.timeMs != null }) {
+            var lo = 0
+            var hi = lines.lastIndex
+            var ans = -1
+            while (lo <= hi) {
+                val mid = (lo + hi) ushr 1
+                val t = lines[mid].timeMs ?: Long.MAX_VALUE
+                if (t <= target) {
+                    ans = mid
+                    lo = mid + 1
+                } else {
+                    hi = mid - 1
+                }
+            }
+            return ans
+        }
         return lines.indices.lastOrNull { i ->
             val t = lines[i].timeMs
-            t != null && t <= positionMs + 150L
+            t != null && t <= target
         } ?: -1
     }
 }
 
+@Immutable
 data class NuvioLiveTvStage(
     val name: String,
     val label: String,
 )
 
+@Immutable
 data class NuvioLiveTvItem(
     val group: String,
     val index: Int,
@@ -52,6 +75,7 @@ data class NuvioLiveTvItem(
     val action: String,
 )
 
+@Immutable
 data class NuvioLiveTvButton(
     val group: String,
     val index: Int,
@@ -59,6 +83,7 @@ data class NuvioLiveTvButton(
     val accent: Boolean,
 )
 
+@Immutable
 data class NuvioLiveTvScreen(
     val stage: String,
     val heading: String,
@@ -69,6 +94,7 @@ data class NuvioLiveTvScreen(
     val empty: String?,
 )
 
+@Immutable
 data class NuvioTonightCard(
     val slot: String,
     val name: String,
@@ -78,6 +104,7 @@ data class NuvioTonightCard(
     val flag: Boolean,
 )
 
+@Immutable
 data class NuvioTonightScreen(
     val view: String,
     val mode: String,
@@ -101,6 +128,7 @@ data class NuvioTonightScreen(
     val selected: Int,
 )
 
+@Immutable
 data class QrPairPayload(
     val host: String?,
     val port: Int?,

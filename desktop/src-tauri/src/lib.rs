@@ -329,9 +329,11 @@ pub fn run() {
                 *guard = spawn_companion(&handle, &token_state.0);
             }
 
-            if start_minimized {
-                if let Some(win) = app.get_webview_window("main") {
+            if let Some(win) = app.get_webview_window("main") {
+                if start_minimized {
                     let _ = win.hide();
+                } else {
+                    let _ = win.show();
                 }
             }
 

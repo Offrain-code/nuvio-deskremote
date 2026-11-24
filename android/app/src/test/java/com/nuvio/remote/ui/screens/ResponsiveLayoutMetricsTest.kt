@@ -35,9 +35,30 @@ class ResponsiveLayoutMetricsTest {
         )
         assertEquals(14.dp, m.horizontalPadding)
         assertEquals(50.dp, m.rockerWidth)
-        assertEquals(56.dp, m.centerOkSize)
+        assertEquals(52.dp, m.centerOkSize)
         val totalUsed = m.horizontalPadding * 2 + m.rockerWidth * 2 + m.dpadDiameter + 16.dp
         assertTrue("totalUsed=$totalUsed should fit within 360.dp", totalUsed <= 360.dp)
+        assertTrue(
+            "D-Pad inner diameter (${m.dpadDiameter - 4.dp}) must fit 2x48dp + OK (${m.centerOkSize}) without overlap",
+            m.dpadDiameter - 4.dp >= 96.dp + m.centerOkSize,
+        )
+    }
+
+    @Test
+    fun `computeCockpitMetrics keeps zero D-Pad overlap in CompactStandard Player`() {
+        val m = computeCockpitMetrics(
+            maxWidth = 360.dp,
+            maxHeight = 640.dp,
+            isPlayer = true,
+            isSheetExpanded = true,
+            fontScale = 1.0f,
+        )
+        assertEquals(160.dp, m.dpadDiameter)
+        assertEquals(48.dp, m.centerOkSize)
+        assertTrue(
+            "D-Pad inner diameter (${m.dpadDiameter - 4.dp}) must fit 2x48dp + OK (${m.centerOkSize})",
+            m.dpadDiameter - 4.dp >= 96.dp + m.centerOkSize,
+        )
     }
 
     @Test
@@ -53,7 +74,11 @@ class ResponsiveLayoutMetricsTest {
         assertEquals(52.dp, m.rockerWidth)
         assertEquals(170.dp, m.rockerHeight)
         assertEquals(186.dp, m.dpadDiameter)
-        assertEquals(68.dp, m.centerOkSize)
+        assertEquals(64.dp, m.centerOkSize)
+        assertTrue(
+            "D-Pad inner diameter (${m.dpadDiameter - 4.dp}) must fit 2x48dp + OK (${m.centerOkSize})",
+            m.dpadDiameter - 4.dp >= 96.dp + m.centerOkSize,
+        )
     }
 
     @Test

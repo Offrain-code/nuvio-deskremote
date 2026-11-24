@@ -5,18 +5,21 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
@@ -108,7 +111,7 @@ fun RemoteTextInputBar(
                     isBackdropLight = isBackdropLight,
                     captureStageBackdrop = captureStageBackdrop,
                 )
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = 6.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             if (showSpecialKeys) {
@@ -199,19 +202,32 @@ private fun syncTextDelta(
     }
 }
 
+private val SPECIAL_KEYS_SCROLL_THRESHOLD = 352.dp
+
 @Composable
 private fun SpecialKeysSection(isClear: Boolean, onSpecialKey: (String) -> Unit) {
     Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            SpecialKeyPill("ESC", Modifier.weight(0.88f), isClear) { onSpecialKey("Escape") }
-            SpecialKeyPill("TAB", Modifier.weight(0.88f), isClear) { onSpecialKey("Tab") }
-            SpecialKeyPill("ALT+TAB", Modifier.weight(1.26f), isClear) { onSpecialKey("AltTab") }
-            SpecialKeyPill("WIN", Modifier.weight(0.86f), isClear) { onSpecialKey("LWin") }
-            SpecialKeyPill("CTRL+C", Modifier.weight(1.14f), isClear) { onSpecialKey("CtrlC") }
-            SpecialKeyPill("CTRL+V", Modifier.weight(1.14f), isClear) { onSpecialKey("CtrlV") }
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val useHorizontalScroll = maxWidth < SPECIAL_KEYS_SCROLL_THRESHOLD
+            val rowModifier = if (useHorizontalScroll) {
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+            } else {
+                Modifier.fillMaxWidth()
+            }
+            Row(
+                modifier = rowModifier,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                val keyMod = if (useHorizontalScroll) Modifier else Modifier.weight(1f)
+                SpecialKeyPill("ESC", keyMod, isClear) { onSpecialKey("Escape") }
+                SpecialKeyPill("TAB", keyMod, isClear) { onSpecialKey("Tab") }
+                SpecialKeyPill("ALT+TAB", keyMod, isClear) { onSpecialKey("AltTab") }
+                SpecialKeyPill("WIN", keyMod, isClear) { onSpecialKey("LWin") }
+                SpecialKeyPill("CTRL+C", keyMod, isClear) { onSpecialKey("CtrlC") }
+                SpecialKeyPill("CTRL+V", keyMod, isClear) { onSpecialKey("CtrlV") }
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -254,8 +270,7 @@ private fun SpecialKeyPill(
 
     Box(
         modifier = modifier
-            .height(48.dp)
-            .widthIn(min = 42.dp)
+            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -270,12 +285,12 @@ private fun SpecialKeyPill(
                 .clip(RoundedCornerShape(10.dp))
                 .background(bgColor)
                 .border(1.dp, borderColor, RoundedCornerShape(10.dp))
-                .padding(horizontal = 3.dp),
+                .padding(horizontal = 2.dp),
             contentAlignment = Alignment.Center,
         ) {
             NuvioText(
                 text = label,
-                style = NuvioTypography.KeyShortcutBadge.copy(fontSize = 10.5.sp),
+                style = NuvioTypography.KeyShortcutBadge.copy(fontSize = 10.sp),
                 color = fgColor,
                 shadow = shadow,
                 maxLines = 1,

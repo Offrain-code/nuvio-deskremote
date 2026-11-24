@@ -138,6 +138,8 @@ export class ScreenServer {
   }
 
   private lastCursor = { nx: 0.5, ny: 0.5, visible: false };
+  private readonly cursorInfoBuf = Buffer.alloc(24);
+  private readonly cursorPointBuf = Buffer.alloc(8);
 
   /** Normalized cursor position (0..1) within the streamed display, respecting Windows CURSOR_SHOWING visibility. */
   cursorNorm(): { nx: number; ny: number; visible: boolean } {
@@ -145,22 +147,30 @@ export class ScreenServer {
     if (!s) return { nx: this.lastCursor.nx, ny: this.lastCursor.ny, visible: false };
 
     let isShowing = true;
+    let hasPos = false;
+    let x = 0;
+    let y = 0;
     try {
-      const ci = Buffer.alloc(24);
-      ci.writeUInt32LE(24, 0); // cbSize = 24 on x64
-      const ok = Number(this.bind.GetCursorInfo(ci));
+      this.cursorInfoBuf.writeUInt32LE(24, 0); // cbSize = 24 on x64
+      const ok = Number(this.bind.GetCursorInfo(this.cursorInfoBuf));
       if (ok !== 0) {
-        const flags = ci.readUInt32LE(4);
+        const flags = this.cursorInfoBuf.readUInt32LE(4);
         isShowing = (flags & 1) !== 0; // CURSOR_SHOWING = 0x00000001
+        x = this.cursorInfoBuf.readInt32LE(16);
+        y = this.cursorInfoBuf.readInt32LE(20);
+        hasPos = true;
       }
     } catch {
-      // fallback best-effort
+      // fallback to GetCursorPos below
     }
 
-    const pt = Buffer.alloc(8);
-    const hasPos = Boolean(this.bind.GetCursorPos(pt));
+    if (!hasPos && Boolean(this.bind.GetCursorPos(this.cursorPointBuf))) {
+      x = this.cursorPointBuf.readInt32LE(0);
+      y = this.cursorPointBuf.readInt32LE(4);
+      hasPos = true;
+    }
+
     if (hasPos) {
-      const x = pt.readInt32LE(0), y = pt.readInt32LE(4);
       const nx = (x - s.rect.x) / Math.max(1, s.rect.width);
       const ny = (y - s.rect.y) / Math.max(1, s.rect.height);
       const inBounds = nx >= 0 && nx <= 1 && ny >= 0 && ny <= 1;

@@ -477,14 +477,14 @@ fn check_github_update_blocking() -> Result<UpdateCheckResult, String> {
     let user_agent = format!("NuvioDeskRemote-Companion/{}", current_version);
     let api_client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .read_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(15))
         .redirect(reqwest::redirect::Policy::none())
         .user_agent(&user_agent)
         .build()
         .map_err(|e| e.to_string())?;
     let asset_client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(10))
-        .read_timeout(Duration::from_secs(15))
+        .timeout(Duration::from_secs(15))
         .redirect(build_safe_redirect_policy())
         .user_agent(&user_agent)
         .build()
@@ -674,7 +674,7 @@ fn download_installer_blocking(
 
     let client = reqwest::blocking::Client::builder()
         .connect_timeout(Duration::from_secs(15))
-        .read_timeout(Duration::from_secs(30))
+        .timeout(Duration::from_secs(300))
         .redirect(build_safe_redirect_policy())
         .user_agent(format!("NuvioDeskRemote-Companion/{}", env!("CARGO_PKG_VERSION")))
         .build()

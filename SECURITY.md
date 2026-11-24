@@ -170,8 +170,7 @@ Pairing establishes trust between a specific mobile device and the Windows Compa
 - **Connection URL:** `ws://<server-ip>:8787` (or `wss://<tunnel-host>` when optional tunnel is enabled)
 - **Supported Handshake Mechanisms:**
   1. *HTTP Header (Recommended):* `Authorization: Bearer nuvio_sec_...`
-  2. *Query Parameter Fallback:* `?auth=nuvio_sec_...`
-  3. *First-Message Auth (within 3 seconds):*
+  2. *First-Message Auth (within 3 seconds):*
      ```json
      {
        "type": "hello",

@@ -65,6 +65,11 @@ test('isPrivateOrLoopback is fail-closed and validates IPv4 ranges', () => {
   assert.equal(isPrivateOrLoopback('::ffff:192.168.1.25'), true);
   assert.equal(isPrivateOrLoopback('10.0.0.42'), true);
   assert.equal(isPrivateOrLoopback('172.16.5.4'), true);
+  assert.equal(isPrivateOrLoopback('fe80::1'), true);
+  assert.equal(isPrivateOrLoopback('fd12:3456::1'), true);
+  assert.equal(isPrivateOrLoopback('fc-evil.com'), false);
+  assert.equal(isPrivateOrLoopback('fd.attacker.org'), false);
+  assert.equal(isPrivateOrLoopback('2001:db8::1'), false);
 });
 
 test('isRequestFromTunnel detects empty cf-connecting-ip header and resolveEffectiveRemote prevents spoofing', () => {
@@ -100,6 +105,8 @@ test('DNS rebinding host header validators block external domains', () => {
   assert.equal(isAllowedLanHostHeader('127.0.0.1:8787'), true);
   assert.equal(isAllowedLanHostHeader('htpc.local:8787'), true);
   assert.equal(isAllowedLanHostHeader('evil.example.com:8787'), false);
+  assert.equal(isAllowedLanHostHeader('fc-evil.com:8787'), false);
+  assert.equal(isAllowedLanHostHeader('fd.attacker.org:8787'), false);
 });
 
 test('validateNuvioExePath blocks arbitrary binaries and allows Nuvio .exe files', () => {
@@ -107,6 +114,8 @@ test('validateNuvioExePath blocks arbitrary binaries and allows Nuvio .exe files
   assert.equal(validateNuvioExePath('').ok, true);
   assert.equal(validateNuvioExePath('C:\\Windows\\System32\\cmd.exe').ok, false);
   assert.equal(validateNuvioExePath('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe').ok, false);
+  assert.equal(validateNuvioExePath('\\\\attacker\\share\\Nuvio.exe').ok, false);
+  assert.equal(validateNuvioExePath('Nuvio.exe').ok, false);
 
   const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nuvio-exe-test-'));
   try {
@@ -322,7 +331,81 @@ test('CompanionServer enforces IPC token, LAN_ONLY, 413 body cap, auth broadcast
     const closeCode = await closedPromise;
     assert.equal(closeCode, 1008);
 
+    // 10. WebSocket upgrade rejects cross-origin browser requests and untrusted Host headers
+    const badOriginStatus = await new Promise((resolve) => {
+      const s = new ws.WebSocket(`ws://127.0.0.1:${port}`, {
+        headers: { Origin: 'https://evil.example' },
+      });
+      s.once('unexpected-response', (_req, res) => resolve(res.statusCode));
+      s.once('open', () => { s.close(); resolve(200); });
+      s.once('error', () => resolve(-1));
+    });
+    assert.equal(badOriginStatus, 403);
+
+    const badHostStatus = await new Promise((resolve) => {
+      const s = new ws.WebSocket(`ws://127.0.0.1:${port}`, {
+        headers: { Host: `fc-evil.com:${port}` },
+      });
+      s.once('unexpected-response', (_req, res) => resolve(res.statusCode));
+      s.once('open', () => { s.close(); resolve(200); });
+      s.once('error', () => resolve(-1));
+    });
+    assert.equal(badHostStatus, 403);
+
+    // 11. Query-string ?auth= is no longer accepted for WebSocket pre-authentication
+    const queryAuthSock = new ws.WebSocket(`ws://127.0.0.1:${port}/?auth=${tokenB}`);
+    await new Promise((r) => queryAuthSock.once('open', r));
+    const queryAuthReply = await new Promise((resolve) => {
+      queryAuthSock.once('message', (data) => resolve(JSON.parse(data.toString('utf8'))));
+      queryAuthSock.send(JSON.stringify({ type: 'get_state' }));
+    });
+    assert.equal(queryAuthReply.type, 'error');
+    assert.equal(queryAuthReply.code, 'AUTH_REQUIRED');
+    queryAuthSock.close();
+
     unauthedSock.close();
+  } finally {
+    srv.stop();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test('CompanionServer fails closed on /api/v1/local/* when no localIpcToken is configured', async () => {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nuvio-srv-noipc-'));
+  const port = 19787 + Math.floor(Math.random() * 1000);
+  const srv = new CompanionServer({
+    cfg: {
+      port,
+      loopback: false,
+      nuvioExePath: null,
+      nuvioTitle: 'Nuvio',
+      logPath: null,
+      apkPath: null,
+      tunnel: { enabled: false },
+      screen: { encoder: 'libx264', bitrateKbps: 2500, gopSeconds: 2, portRangeBegin: 60000, portRangeEnd: 60100 },
+    },
+    state: new ScreenStateMachine(),
+    injector: { resolveNuvioExePath: () => null, setNuvioExePath: () => undefined, getBind: () => ({}) },
+    screen: {
+      setStatusCb: () => undefined,
+      setFrameCb: () => undefined,
+      setAudioCb: () => undefined,
+      isRunning: () => false,
+      stopIfOwner: () => false,
+      stop: () => false,
+      cursorNorm: () => ({ nx: 0.5, ny: 0.5, visible: false }),
+      activeMonitor: () => 1,
+    },
+    logtail: null,
+    tokenStore: new TokenStore(tmpDir),
+    localIpcToken: '',
+  });
+  srv.start();
+  await new Promise((r) => setTimeout(r, 120));
+  try {
+    const res = await httpJson(port, 'GET', '/api/v1/local/pair-info', { Host: `127.0.0.1:${port}` });
+    assert.equal(res.status, 403);
+    assert.equal(res.json.error, 'LOOPBACK_ONLY');
   } finally {
     srv.stop();
     fs.rmSync(tmpDir, { recursive: true, force: true });

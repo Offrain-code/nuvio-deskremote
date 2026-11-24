@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as dgram from 'dgram';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { spawn } from 'child_process';
@@ -44,6 +45,7 @@ const DISCOVERY_UDP_PORT = 8766;
 const PAIRING_HTTP_PORT = 8765;
 const MOUSE_UDP_PORT = 8768;
 const MAX_WS_PAYLOAD_BYTES = 1024 * 1024; // 1 MiB
+const MAX_UNAUTHED_WS_CONNECTIONS = 16;
 const MAX_TYPE_TEXT_CHARS = 8192;
 const MAX_CLIPBOARD_BYTES = 128 * 1024; // 128 KiB
 
@@ -357,6 +359,7 @@ export class CompanionServer {
       server: httpSrv,
       perMessageDeflate: false,
       maxPayload: MAX_WS_PAYLOAD_BYTES,
+      verifyClient: (info, done) => this.verifyWsClient(info, done),
     });
     wss.on('connection', (socket, req) => this.onConnection(socket as SocketWithMeta, req));
     wss.on('error', (err) => error(`ws[${tag}]: ${(err as Error).message}`));
@@ -383,6 +386,7 @@ export class CompanionServer {
         server: httpSrv,
         perMessageDeflate: false,
         maxPayload: MAX_WS_PAYLOAD_BYTES,
+        verifyClient: (info, done) => this.verifyWsClient(info, done),
       });
       wss.on('connection', (socket, req) => this.onConnection(socket as SocketWithMeta, req));
       wss.on('error', (err) => warn(`ws[compat-8765]: ${(err as Error).message}`));
@@ -433,14 +437,48 @@ export class CompanionServer {
     this.httpServers = [];
   }
 
+  private verifyWsClient(
+    info: { origin: string; req: http.IncomingMessage; secure: boolean },
+    done: (res: boolean, code?: number, message?: string) => void,
+  ): void {
+    const req = info.req;
+    const fromTunnel = isRequestFromTunnel(req);
+    if (fromTunnel) {
+      if (!this.tunnelEnabled) {
+        done(false, 403, 'Tunnel disabled');
+        return;
+      }
+    } else if (!isAllowedLanHostHeader(req.headers.host)) {
+      done(false, 403, 'Untrusted Host header');
+      return;
+    }
+
+    const originHeader = (req.headers['origin'] ?? '').toString().trim();
+    if (originHeader && !/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(?::\d+)?$/i.test(originHeader)) {
+      done(false, 403, 'Cross-origin WebSocket rejected');
+      return;
+    }
+
+    let unauthedCount = 0;
+    for (const s of this.sockets) {
+      if (!s._authed && s.readyState !== ws.WebSocket.CLOSED) {
+        unauthedCount += 1;
+      }
+    }
+    if (unauthedCount >= MAX_UNAUTHED_WS_CONNECTIONS) {
+      done(false, 429, 'Too many unauthenticated connections');
+      return;
+    }
+
+    done(true);
+  }
+
   private hasValidLocalIpcAccess(req: http.IncomingMessage, rawSocketAddr: string): boolean {
     if (!isLoopbackAddress(rawSocketAddr)) return false;
     if (!isAllowedLocalHostHeader(req.headers.host)) return false;
-    if (this.localIpcToken) {
-      const provided = String(req.headers['x-nuvio-local-token'] ?? '').trim();
-      return timingSafeTokenEqual(provided, this.localIpcToken);
-    }
-    return true;
+    if (!this.localIpcToken) return false;
+    const provided = String(req.headers['x-nuvio-local-token'] ?? '').trim();
+    return timingSafeTokenEqual(provided, this.localIpcToken);
   }
 
   private getBearerDevice(req: http.IncomingMessage, remote: string) {
@@ -1076,17 +1114,8 @@ export class CompanionServer {
     const remoteAddr = resolveEffectiveRemote(req, this.tunnelEnabled);
     const isLan = !fromTunnel && isPrivateOrLoopback(remoteAddr) && isPrivateOrLoopback(rawSocketAddr);
 
-    let queryAuth = '';
-    try {
-      const parsedUrl = new URL(req.url ?? '/', 'http://localhost');
-      queryAuth = (parsedUrl.searchParams.get('auth') ?? '').trim();
-    } catch {
-      // ignore
-    }
-
     const bearerHeader = (req.headers['authorization'] ?? '').toString().replace(/^Bearer\s+/i, '').trim();
-    const tokenCandidate = bearerHeader || queryAuth;
-    const pairedDev = tokenCandidate ? this.tokenStore.validateToken(tokenCandidate, remoteAddr) : null;
+    const pairedDev = bearerHeader ? this.tokenStore.validateToken(bearerHeader, remoteAddr) : null;
     const isAuthed = pairedDev !== null;
 
     this.nextSocketId += 1;
@@ -1676,6 +1705,9 @@ export function validateNuvioExePath(rawPath: string | null): { ok: boolean; nor
   if (/[\r\n\0]/.test(clean) || clean.length > 512) {
     return { ok: false, normalized: null, error: 'Invalid executable path format.' };
   }
+  if (/^(\\\\|\/\/)/.test(clean) || !/^[a-zA-Z]:[\\/]/.test(clean)) {
+    return { ok: false, normalized: null, error: 'Path must be a local drive path to a Nuvio .exe executable.' };
+  }
   const base = path.win32.basename(clean).toLowerCase();
   if (!base.endsWith('.exe') || !base.includes('nuvio')) {
     return { ok: false, normalized: null, error: 'Path must point to a Nuvio .exe executable.' };
@@ -1784,7 +1816,7 @@ export function isPrivateOrLoopback(addr: string): boolean {
     return clean.split('.').every((oct) => Number(oct) >= 0 && Number(oct) <= 255);
   }
   const lower = clean.toLowerCase();
-  if (lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) return true;
+  if (net.isIP(lower) === 6 && /^(fe[89ab][0-9a-f]|f[cd][0-9a-f]{2}):/.test(lower)) return true;
   return false;
 }
 

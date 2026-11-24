@@ -85,7 +85,6 @@ sealed interface ConnState {
 class NuvioConnection(
     private val authProvider: () -> String = { "" },
     private val onTunnelUrlDiscovered: (String) -> Unit = {},
-    private val onTokenReceived: (String) -> Unit = {},
     initialTunnelUrl: String = "",
     initialScreenAudioEnabled: Boolean = true,
 ) {
@@ -1047,11 +1046,6 @@ class NuvioConnection(
                 if (tun.isNotEmpty() && tun != "null" && EndpointUrlResolver.isAllowedTunnelUrl(tun)) {
                     _tunnelUrl.value = tun
                     onTunnelUrlDiscovered(tun)
-                }
-                val currentTok = runCatching { authProvider() }.getOrDefault("")
-                val paired = obj.optString("pairedToken", "").trim()
-                if (currentTok.isBlank() && paired.startsWith("nuvio_sec_") && paired.length >= 32) {
-                    onTokenReceived(paired)
                 }
                 obj.optJSONArray("monitors")?.let { arr ->
                     for (i in 0 until arr.length()) {

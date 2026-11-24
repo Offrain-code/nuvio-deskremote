@@ -131,7 +131,6 @@ class MainActivity : ComponentActivity() {
         conn = NuvioConnection(
             authProvider = { pairing.savedToken },
             onTunnelUrlDiscovered = { tun -> appPrefs.savedTunnelUrl = tun },
-            onTokenReceived = { tok -> pairing.savedToken = tok },
             initialTunnelUrl = appPrefs.savedTunnelUrl,
             initialScreenAudioEnabled = appPrefs.screenAudioEnabled,
         )

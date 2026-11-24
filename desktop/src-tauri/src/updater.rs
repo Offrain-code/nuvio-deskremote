@@ -659,6 +659,18 @@ pub async fn download_github_update(
     Ok(result)
 }
 
+fn resolve_update_dir() -> PathBuf {
+    if let Ok(local_app_data) = std::env::var("LOCALAPPDATA") {
+        let trimmed = local_app_data.trim();
+        if !trimmed.is_empty() {
+            return PathBuf::from(trimmed)
+                .join("NuvioDeskRemote")
+                .join("updates");
+        }
+    }
+    std::env::temp_dir().join("NuvioDeskRemoteUpdate")
+}
+
 fn download_installer_blocking(
     app: AppHandle,
     cancel: Arc<AtomicBool>,
@@ -666,7 +678,7 @@ fn download_installer_blocking(
     safe_name: String,
     expected_sha256: String,
 ) -> Result<DownloadUpdateResult, String> {
-    let dir = std::env::temp_dir().join("NuvioDeskRemoteUpdate");
+    let dir = resolve_update_dir();
     fs::create_dir_all(&dir).map_err(|e| format!("Could not prepare update folder: {}", e))?;
 
     let final_path = dir.join(&safe_name);

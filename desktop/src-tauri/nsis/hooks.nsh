@@ -13,7 +13,7 @@
 !macroend
 
 !macro NSIS_HOOK_POSTINSTALL
-  ; Clean any stale or auto-blocked rules before adding fresh LAN rules
+  ; Clean any stale, legacy broad, or auto-blocked rules before adding scoped LAN rules
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name=all program="$INSTDIR\resources\server\node.exe"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (Server TCP)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (Server UDP)"'
@@ -21,14 +21,14 @@
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (Pair 8765)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (WebRTC UDP 60000-60100)"'
 
-  ; Allow bundled Node.js Companion server + explicit LAN ports restricted to local subnet (works on Private and Public home Wi-Fi)
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Server TCP)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=TCP remoteip=localsubnet profile=private,public'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Server UDP)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=UDP remoteip=localsubnet profile=private,public'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (WS 8787)" dir=in action=allow protocol=TCP localport=8787 remoteip=localsubnet profile=private,public'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Pair 8765)" dir=in action=allow protocol=TCP localport=8765 remoteip=localsubnet profile=private,public'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)" dir=in action=allow protocol=UDP localport=8766 remoteip=localsubnet profile=private,public'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)" dir=in action=allow protocol=UDP localport=8768 remoteip=localsubnet profile=private,public'
+  ; Allow only the bundled Node.js Companion server on its explicit LAN ports, restricted to Private networks and local subnet
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (WS 8787)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=TCP localport=8787 remoteip=localsubnet profile=private'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Pair 8765)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=TCP localport=8765 remoteip=localsubnet profile=private'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=UDP localport=8766 remoteip=localsubnet profile=private'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=UDP localport=8768 remoteip=localsubnet profile=private'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (WebRTC UDP 60000-60100)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=UDP localport=60000-60100 remoteip=localsubnet profile=private'
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
@@ -40,4 +40,5 @@
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (Pair 8765)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)"'
+  nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (WebRTC UDP 60000-60100)"'
 !macroend

@@ -2,6 +2,14 @@
 
 All notable changes to **Nuvio DeskRemote** (Android app + Windows Companion) are documented in this file.
 
+## [0.5.4] - 2026-11-24
+
+### Security
+- **DNS Rebinding & WebSocket Upgrade Hardening:** Required valid IPv6 syntax (`net.isIP === 6`) in `isPrivateOrLoopback()` to block domains starting with `fc`/`fd` from bypassing `Host` checks; enforced `Host` validation, browser cross-origin rejection, and a 16-connection cap for unauthenticated sockets during WebSocket `upgrade`.
+- **Fail-Closed Local IPC & Path Validation:** Made `/api/v1/local/*` fail closed when `NUVIO_LOCAL_IPC_TOKEN` is unset, rejected UNC (`\\server\...`) and non-absolute paths in `validateNuvioExePath()`, and removed legacy `?auth=` query-string token authentication on WebSocket connections.
+- **Scoped Windows Firewall Rules (NSIS):** Restricted Companion inbound firewall rules to `profile=private` and `program=node.exe` on explicit ports (`8787`, `8765`, `8766`, `8768`, and WebRTC UDP `60000-60100`), removing broad public-profile and all-ports rules.
+- **Windows Auto-Updater & Android Cleanup:** Moved downloaded Windows installer staging from `%TEMP%` to `%LOCALAPPDATA%\NuvioDeskRemote\updates` (retaining pre-UAC SHA-256 re-verification) and removed dead legacy `pairedToken` acceptance in Android `welcome` messages.
+
 ## [0.5.3] - 2026-11-24
 
 ### Performance

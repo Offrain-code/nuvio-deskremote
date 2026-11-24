@@ -1,18 +1,16 @@
 {
   "en": [
-    "Improved Android Liquid Glass rendering and battery life (dp blur, GPU-only pill/switch animations, PC-only Wi-Fi latency lock).",
-    "Unified Android image caching into a single bounded 8 MiB RGB_565 LruCache with downsampling.",
-    "Reduced Windows Companion CPU/latency with demand-driven cursor polling, native Win32 clipboard, and tuned FFmpeg presets.",
-    "Eliminated startup window flash on both Windows Desktop Companion (--minimized) and Android Light Theme (DayNight).",
-    "Guaranteed >= 48dp touch targets and zero D-Pad overlap across all screen sizes.",
-    "Improved Light/Dark WCAG AA contrast on QR Scanner, Portrait Screen Share, and Windows Companion UI."
+    "Hardened DNS rebinding checks (strict IPv6 validation) and added Host, Origin, and unauthenticated socket-cap checks on WebSocket upgrades.",
+    "Made local Companion IPC routes (/api/v1/local/*) fail closed without X-Nuvio-Local-Token and blocked UNC paths in Nuvio.exe config.",
+    "Removed legacy ?auth= WebSocket query-string token fallback and dead Android pairedToken welcome acceptance.",
+    "Restricted Windows NSIS firewall rules to Private networks and explicit Companion ports (8787, 8765, 8766, 8768, WebRTC 60000-60100).",
+    "Moved Windows auto-updater installer staging from %TEMP% to %LOCALAPPDATA%\\NuvioDeskRemote\\updates with pre-UAC SHA-256 re-verification."
   ],
   "pt-BR": [
-    "Renderização Liquid Glass e bateria otimizadas no Android (blur em dp, animações só na GPU e trava Wi-Fi apenas no Modo PC).",
-    "Cache de imagens unificado no Android em um único LruCache de 8 MiB em RGB_565 com redimensionamento automático.",
-    "Menor uso de CPU e latência no servidor Windows com polling de cursor sob demanda, clipboard Win32 nativo e ajustes no FFmpeg.",
-    "Fim do flash branco/preto na abertura do Companion Windows (--minimized) e do Android no Tema Claro (DayNight).",
-    "Alvos de toque >= 48dp garantidos e zero sobreposição no D-Pad em todos os tamanhos de tela.",
-    "Contraste WCAG AA aprimorado em Claro e Escuro no scanner QR, Screen Share retrato e interface do Companion Windows."
+    "Proteção reforçada contra DNS rebinding (validação estrita de IPv6) e validação de Host, Origin e limite de sockets não autenticados no WebSocket.",
+    "Rotas locais do Companion (/api/v1/local/*) agora bloqueiam por padrão sem X-Nuvio-Local-Token e caminhos UNC foram bloqueados na configuração do Nuvio.exe.",
+    "Removido o fallback legado ?auth= na URL do WebSocket e a aceitação legada de pairedToken no Android.",
+    "Regras de Firewall do instalador Windows restritas a Redes Privadas e portas explícitas do Companion (8787, 8765, 8766, 8768 e WebRTC 60000-60100).",
+    "Download do auto-updater no Windows movido de %TEMP% para %LOCALAPPDATA%\\NuvioDeskRemote\\updates com revalidação SHA-256 antes do UAC."
   ]
 }

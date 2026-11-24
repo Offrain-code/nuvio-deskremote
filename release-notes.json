@@ -1,20 +1,18 @@
 {
   "en": [
-    "Hardened LAN_ONLY pairing, local IPC authentication, and immediate WebSocket/UDP device revocation.",
-    "Secured Android & Windows auto-updaters with redirect allowlists and mandatory SHA-256 verification.",
-    "Stabilized Screen Share on clean Windows PCs (FFmpeg 4.1 fallback, dual-monitor ddagrab, zero orphan processes).",
-    "Improved PC loopback audio (preserves mute state, 24-bit PCM support, safe disconnect on device switch).",
-    "Fixed Win32 Alt focus lock, negative mouse/scroll deltas, emoji typing, and graceful Companion shutdown.",
-    "Fixed Android WebRTC/EGL leaks, lock-screen media service stability, and Android 13+ notification permission.",
-    "Fixed Light Theme slider contrast, Cinema/Player scrubbing, two-finger trackpad tap, and Live TV progress."
+    "Improved Android Liquid Glass rendering and battery life (dp blur, GPU-only pill/switch animations, PC-only Wi-Fi latency lock).",
+    "Unified Android image caching into a single bounded 8 MiB RGB_565 LruCache with downsampling.",
+    "Reduced Windows Companion CPU/latency with demand-driven cursor polling, native Win32 clipboard, and tuned FFmpeg presets.",
+    "Eliminated startup window flash on both Windows Desktop Companion (--minimized) and Android Light Theme (DayNight).",
+    "Guaranteed >= 48dp touch targets and zero D-Pad overlap across all screen sizes.",
+    "Improved Light/Dark WCAG AA contrast on QR Scanner, Portrait Screen Share, and Windows Companion UI."
   ],
   "pt-BR": [
-    "Reforço de segurança em LAN_ONLY, autenticação IPC local e revogação imediata de sessões WebSocket/UDP.",
-    "Auto-updaters Android e Windows protegidos com validação de redirects e verificação obrigatória de SHA-256.",
-    "Screen Share mais estável em PCs limpos (compatibilidade FFmpeg 4.1, ddagrab em 2 monitores e fim de processos órfãos).",
-    "Áudio do PC aprimorado (preserva estado de mudo, suporte a PCM 24-bit e recuperação ao trocar saída de áudio).",
-    "Correções Win32: fim do Alt preso, movimento/scroll negativo, envio de emojis e desligamento limpo do Companion.",
-    "Correção de vazamentos WebRTC/EGL no Android, estabilidade do serviço de mídia e permissão de notificações (Android 13+).",
-    "Correção de contraste dos sliders no Tema Claro, arraste no Player/Cinema, toque de 2 dedos no Trackpad e progresso da Live TV."
+    "Renderização Liquid Glass e bateria otimizadas no Android (blur em dp, animações só na GPU e trava Wi-Fi apenas no Modo PC).",
+    "Cache de imagens unificado no Android em um único LruCache de 8 MiB em RGB_565 com redimensionamento automático.",
+    "Menor uso de CPU e latência no servidor Windows com polling de cursor sob demanda, clipboard Win32 nativo e ajustes no FFmpeg.",
+    "Fim do flash branco/preto na abertura do Companion Windows (--minimized) e do Android no Tema Claro (DayNight).",
+    "Alvos de toque >= 48dp garantidos e zero sobreposição no D-Pad em todos os tamanhos de tela.",
+    "Contraste WCAG AA aprimorado em Claro e Escuro no scanner QR, Screen Share retrato e interface do Companion Windows."
   ]
 }

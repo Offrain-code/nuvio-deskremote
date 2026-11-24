@@ -2,6 +2,18 @@
 
 All notable changes to **Nuvio DeskRemote** (Android app + Windows Companion) are documented in this file.
 
+## [0.5.3] - 2026-11-24
+
+### Performance
+- **Android Liquid Glass & Rendering:** Converted blur radii to density-independent `dp`, cached ambient backdrop gradients in `drawWithCache`, allocated `rememberGraphicsLayer()` only when live blur is active, and moved `NuvioGlassSwitch`, `NuvioGlassDock`, and `NuvioModeSegmentedControl` animations to GPU-only `graphicsLayer` / `Canvas` drawing (zero relayout).
+- **Android Memory & Battery:** Unified poster/artwork loading into a single bounded 8 MiB `LruCache` (`RGB_565`, `inSampleSize` downsampling, 2 MiB download cap), added `@Immutable` annotations and binary search to lyrics/phase-3 models, and restricted `WifiLatencyLock` to PC Mode tabs (`Trackpad` and `Screen`).
+- **Windows Companion Server & Desktop:** Made the 40Hz cursor polling timer demand-driven (active only during Screen Share), skipped frame buffer concatenation when no client is ready, added native Win32 clipboard read/write with PowerShell fallback, reused pre-allocated cursor buffers, tuned FFmpeg H.264 (`-threads 2`, `sliced-threads=1`) and MJPEG (`fast_bilinear`), and eliminated Desktop Companion startup window flash when launched `--minimized`.
+
+### Accessibility & Visual Polish
+- **Android Touch Targets (`>= 48dp`):** Expanded `AppsSubTabSegmentedControl` and `SpecialKeyPill` touch targets to `>= 48dp` (with horizontal scroll fallback below `352dp`), and refined `PrecisionDPadRing` inner padding and `centerOkSize` across all breakpoints to eliminate D-Pad touch overlap.
+- **Android Light Theme & Contrast (`WCAG AA >= 4.5:1`):** Enforced high-contrast primary pills and `+35%` adaptive scrim with `ClearContentShadow` in `QrScannerDialog`, forwarded `isBackdropLight` to portrait `VideoStreamViewport` (`ZoomResetPill`), and separated `values/themes.xml` and `values-night/themes.xml` (`DayNight`) to eliminate the black startup flash in Light Theme.
+- **Desktop Companion Contrast:** Updated `--text-muted`, `--status-online`, `--status-warn`, and `--status-danger` tokens in `desktop/ui/styles.css` for `>= 4.5:1` WCAG AA contrast in both Dark and Light themes.
+
 ## [0.5.2] - 2026-11-23
 
 ### Security

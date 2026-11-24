@@ -27,9 +27,15 @@ export class AudioLoopbackStreamer {
     return this.running;
   }
 
+  private static resolveHelperPath(): string {
+    const byDir = path.resolve(__dirname, '..', '..', 'bin', 'nuvio-audio-capture.exe');
+    if (fs.existsSync(byDir)) return byDir;
+    return path.resolve(process.cwd(), 'bin', 'nuvio-audio-capture.exe');
+  }
+
   public start(): void {
     if (this.running) return;
-    const binPath = path.resolve(process.cwd(), 'bin', 'nuvio-audio-capture.exe');
+    const binPath = AudioLoopbackStreamer.resolveHelperPath();
     if (!fs.existsSync(binPath)) {
       // eslint-disable-next-line no-console
       console.warn(`[nuvio-remote] Audio capture helper not found at ${binPath}`);
@@ -47,7 +53,7 @@ export class AudioLoopbackStreamer {
       this.proc = child;
 
       child.stdout.on('data', (chunk: Buffer) => {
-        if (!this.running) return;
+        if (!this.running || this.proc !== child) return;
         this.consumePcm(chunk);
       });
 
@@ -56,11 +62,13 @@ export class AudioLoopbackStreamer {
       });
 
       child.on('error', () => {
+        if (this.proc !== child) return;
         this.running = false;
         this.proc = null;
       });
 
       child.on('close', () => {
+        if (this.proc !== child) return;
         this.running = false;
         this.proc = null;
       });
@@ -71,18 +79,21 @@ export class AudioLoopbackStreamer {
   }
 
   public stop(): void {
+    const wasActive = this.running || this.proc !== null;
     this.running = false;
     this.remainder = Buffer.alloc(0);
-    if (this.proc) {
+    const proc = this.proc;
+    this.proc = null;
+    if (proc) {
       try {
-        this.proc.kill();
+        proc.kill();
       } catch {
         // ignore
       }
-      this.proc = null;
     }
-    // Immediately restore PC speaker audio when stopping mobile playback or leaving Screen Share
-    const binPath = path.resolve(process.cwd(), 'bin', 'nuvio-audio-capture.exe');
+    if (!wasActive) return;
+    // Restore PC speaker audio only if capture was active (helper preserves user pre-mute state)
+    const binPath = AudioLoopbackStreamer.resolveHelperPath();
     if (fs.existsSync(binPath)) {
       try {
         const unmuter = spawn(binPath, ['--unmute'], {

@@ -128,7 +128,11 @@ export class H264Encoder {
   }
 }
 
-let cachedFfmpegResolution: { path: string; supportsDdagrab: boolean } | null = null;
+let cachedFfmpegResolution: { path: string; supportsDdagrab: boolean; supportsFpsMode: boolean } | null = null;
+
+function fpsModeArgs(supportsFpsMode: boolean): string[] {
+  return supportsFpsMode ? ['-fps_mode', 'passthrough'] : ['-vsync', '0'];
+}
 
 function findSystemFfmpeg(): string | null {
   const envPath = process.env.FFMPEG_PATH?.trim();
@@ -154,14 +158,15 @@ function findSystemFfmpeg(): string | null {
 }
 
 /** Prefers system/bundled FFmpeg with D3D11 Desktop Duplication (ddagrab), falling back to @ffmpeg-installer/ffmpeg. */
-export function getFfmpegPath(): { path: string; supportsDdagrab: boolean } {
+export function getFfmpegPath(): { path: string; supportsDdagrab: boolean; supportsFpsMode: boolean } {
   if (cachedFfmpegResolution) return cachedFfmpegResolution;
   const sysPath = findSystemFfmpeg();
   if (sysPath) {
-    cachedFfmpegResolution = { path: sysPath, supportsDdagrab: true };
+    cachedFfmpegResolution = { path: sysPath, supportsDdagrab: true, supportsFpsMode: true };
     return cachedFfmpegResolution;
   }
-  cachedFfmpegResolution = { path: ffmpegInstaller.path, supportsDdagrab: false };
+  // @ffmpeg-installer/win32-x64 bundles FFmpeg 4.1.0, which predates -fps_mode (5.1+) and ddagrab
+  cachedFfmpegResolution = { path: ffmpegInstaller.path, supportsDdagrab: false, supportsFpsMode: false };
   return cachedFfmpegResolution;
 }
 
@@ -325,7 +330,7 @@ export class MjpegEncoder {
         '-f', 'lavfi',
         '-i', `ddagrab=output_idx=${ddaIdx}:framerate=${opts.fps}:draw_mouse=0:dup_frames=1:allow_fallback=1`,
         '-vf', vfChain,
-        '-fps_mode', 'passthrough',
+        ...fpsModeArgs(ff.supportsFpsMode),
         '-thread_type', 'slice', '-threads', '4',
         '-c:v', 'mjpeg', '-pix_fmt', 'yuvj420p', '-huffman', 'default', '-q:v', String(q),
         '-f', 'image2pipe', '-flush_packets', '1', 'pipe:1',
@@ -348,7 +353,7 @@ export class MjpegEncoder {
         '-video_size', `${opts.width}x${opts.height}`,
         '-i', 'desktop',
         '-vf', vfChain,
-        '-fps_mode', 'passthrough',
+        ...fpsModeArgs(ff.supportsFpsMode),
         '-thread_type', 'slice', '-threads', '4',
         '-c:v', 'mjpeg', '-pix_fmt', 'yuvj420p', '-huffman', 'default', '-q:v', String(q),
         '-f', 'image2pipe', '-flush_packets', '1', 'pipe:1',
@@ -366,7 +371,7 @@ export class MjpegEncoder {
         '-f', 'rawvideo', '-pix_fmt', 'bgra', '-s', `${opts.width}x${opts.height}`,
         '-r', String(opts.fps), '-i', 'pipe:0',
         '-vf', vfChain,
-        '-fps_mode', 'passthrough',
+        ...fpsModeArgs(ff.supportsFpsMode),
         '-thread_type', 'slice', '-threads', '4',
         '-c:v', 'mjpeg', '-pix_fmt', 'yuvj420p', '-huffman', 'default', '-q:v', String(q),
         '-f', 'image2pipe', '-flush_packets', '1', 'pipe:1',
@@ -476,12 +481,8 @@ export class MjpegEncoder {
     this.lastSentFrame = null;
     this.lastSentAt = 0;
     if (!proc) return;
-    try {
-      proc.stdin?.end();
-      setTimeout(() => {
-        try { proc.kill(); } catch { /* ignore */ }
-      }, 250);
-    } catch { /* ignore */ }
+    try { proc.stdin?.end(); } catch { /* ignore */ }
+    try { proc.kill(); } catch { /* ignore */ }
   }
 }
 
@@ -601,7 +602,7 @@ export class H264StreamEncoder {
     const codecArgs =
       opts.codec === 'h264_amf'
         ? [
-            '-fps_mode', 'passthrough',
+            ...fpsModeArgs(ff.supportsFpsMode),
             '-c:v', 'h264_amf',
             '-usage', 'ultralowlatency',
             '-latency', 'true',
@@ -625,7 +626,7 @@ export class H264StreamEncoder {
             '-bf', '0',
           ]
         : [
-            '-fps_mode', 'passthrough',
+            ...fpsModeArgs(ff.supportsFpsMode),
             '-c:v', 'libx264',
             '-profile:v', 'baseline',
             '-pix_fmt', 'yuv420p',
@@ -662,6 +663,7 @@ export class H264StreamEncoder {
     proc.stderr?.on('data', (d: Buffer) => {
       this.stderrTail = (this.stderrTail + d.toString('utf8')).slice(-500);
     });
+    proc.stdin?.on('error', () => { /* ignore EPIPE on stop */ });
     proc.on('error', (err) => {
       if (this.proc === proc) {
         this.proc = null;
@@ -706,12 +708,8 @@ export class H264StreamEncoder {
     this.proc = null;
     this.busy = false;
     if (!proc) return;
-    try {
-      proc.stdin?.end();
-      setTimeout(() => {
-        try { proc.kill(); } catch { /* ignore */ }
-      }, 250);
-    } catch { /* ignore */ }
+    try { proc.stdin?.end(); } catch { /* ignore */ }
+    try { proc.kill(); } catch { /* ignore */ }
   }
 }
 

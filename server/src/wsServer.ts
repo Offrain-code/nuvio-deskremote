@@ -702,6 +702,17 @@ export class CompanionServer {
         });
         return;
       }
+      if (req.method === 'POST' && req.url === '/api/v1/local/shutdown') {
+        res.writeHead(200, { 'Content-Type': 'application/json', Connection: 'close' });
+        res.end(JSON.stringify({ ok: true }), () => {
+          this.injector.releaseHeldMouseButtons();
+          this.stop();
+          this.bridge?.stop();
+          this.logtail?.stop();
+          setTimeout(() => process.exit(0), 60).unref();
+        });
+        return;
+      }
     }
 
     if (req.method === 'GET' && req.url === '/api/v1/pair/status') {
@@ -1099,6 +1110,9 @@ export class CompanionServer {
         clearTimeout(socket._authTimer);
         socket._authTimer = undefined;
       }
+      if (socket._authed) {
+        this.injector.releaseHeldMouseButtons();
+      }
       socket._wantsScreen = false;
       this.sockets.delete(socket);
       this.rebuildAuthorizedClientIps();
@@ -1361,8 +1375,8 @@ export class CompanionServer {
         return;
       }
       case 'screen_stop':
-        for (const s of this.sockets) s._wantsScreen = false;
-        this.screen.stop('client screen_stop');
+        socket._wantsScreen = false;
+        this.screen.stopIfOwner(socketId(socket), 'client screen_stop');
         return;
       case 'screen_audio':
         this.screen.setAudioEnabled(Boolean(msg.enabled));

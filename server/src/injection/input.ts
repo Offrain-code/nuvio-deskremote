@@ -78,6 +78,7 @@ export class InputInjector {
   private focusDelayMs = 45;
   private hIBeam = 0n;
   private lastWindowProbeAt = 0;
+  private heldButtons = new Set<MouseButton>();
 
   constructor(bind: Win32Bindings, nuvioWindowTitle: string, configuredNuvioExePath?: string | null) {
     this.bind = bind;
@@ -231,11 +232,23 @@ export class InputInjector {
         sendInputs(this.bind, packInput([{ ...spec, keyup: false }, { ...spec, keyup: true }]), 2);
         continue;
       }
-      const cp = ch.codePointAt(0) ?? 0;
-      sendInputs(this.bind, packInput([
-        { vk: 0, scan: cp, extended: false, unicode: cp, keyup: false },
-        { vk: 0, scan: cp, extended: false, unicode: cp, keyup: true },
-      ]), 2);
+      // Encode via UTF-16 code units so emojis / astral characters (> U+FFFF) use valid surrogate pairs
+      if (ch.length === 1) {
+        const unit = ch.charCodeAt(0);
+        sendInputs(this.bind, packInput([
+          { vk: 0, scan: unit, extended: false, unicode: unit, keyup: false },
+          { vk: 0, scan: unit, extended: false, unicode: unit, keyup: true },
+        ]), 2);
+      } else {
+        const hi = ch.charCodeAt(0);
+        const lo = ch.charCodeAt(1);
+        sendInputs(this.bind, packInput([
+          { vk: 0, scan: hi, extended: false, unicode: hi, keyup: false },
+          { vk: 0, scan: lo, extended: false, unicode: lo, keyup: false },
+          { vk: 0, scan: hi, extended: false, unicode: hi, keyup: true },
+          { vk: 0, scan: lo, extended: false, unicode: lo, keyup: true },
+        ]), 4);
+      }
     }
     return okOutcome;
   }
@@ -316,12 +329,33 @@ export class InputInjector {
 
   async mouseHold(btn: MouseButton, down: boolean): Promise<InputOutcome> {
     const flag = mouseFlag(btn, !down);
+    if (down) this.heldButtons.add(btn);
+    else this.heldButtons.delete(btn);
     try {
       this.bind.mouse_event(flag, 0, 0, 0, 0);
       return okOutcome;
     } catch {
       const r = sendInputs(this.bind, packMouseInputs([{ flags: flag }]), 1);
       return r.ok ? okOutcome : fail('HOLD_FAILED', 'mouse hold failed');
+    }
+  }
+
+  /** Releases any mouse buttons still held down (e.g. when a client disconnects mid-drag). */
+  releaseHeldMouseButtons(): void {
+    if (this.heldButtons.size === 0) return;
+    const buttons = Array.from(this.heldButtons);
+    this.heldButtons.clear();
+    for (const btn of buttons) {
+      const upFlag = mouseFlag(btn, true);
+      try {
+        this.bind.mouse_event(upFlag, 0, 0, 0, 0);
+      } catch {
+        try {
+          sendInputs(this.bind, packMouseInputs([{ flags: upFlag }]), 1);
+        } catch {
+          // ignore
+        }
+      }
     }
   }
 
@@ -357,14 +391,14 @@ export class InputInjector {
         return okOutcome;
       case 'suspend_display':
       case 'curtain_on': {
-        // HWND_BROADCAST (0xffff), WM_SYSCOMMAND (0x0112), SC_MONITORPOWER (0xF170), 2 (off)
-        this.bind.SendMessageW(0xffff, 0x0112, 0xf170, 2);
+        // Non-blocking PostMessageW avoids freezing the event loop if any top-level window is hung
+        this.bind.PostMessageW(0xffff, 0x0112, 0xf170, 2);
         return okOutcome;
       }
       case 'curtain_off': {
-        // Slightly nudge cursor and wake physical display (-1 = power on)
+        // Slightly nudge cursor and wake physical display (-1 = power on) without blocking
         this.bind.mouse_event(MOUSEEVENTF_MOVE, 1, 0, 0, 0);
-        this.bind.SendMessageW(0xffff, 0x0112, 0xf170, -1);
+        this.bind.PostMessageW(0xffff, 0x0112, 0xf170, -1);
         return okOutcome;
       }
       default:

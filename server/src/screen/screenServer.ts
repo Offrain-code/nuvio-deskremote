@@ -87,6 +87,8 @@ export class ScreenServer {
   private audioEnabled = true;
   private idCounter = 0;
   private currentMonitor = 1;
+  private startGeneration = 0;
+  private pendingOwnerId: string | null = null;
 
   constructor(cfg: Config, bind: Win32Bindings) {
     this.cfg = cfg;
@@ -228,166 +230,194 @@ export class ScreenServer {
     if (this.session) {
       this.stop('replacing previous session (new screen_start)');
     }
-    attachToInteractiveDesktop(this.bind);
-    const dims = profileDims(profile);
-    const monitors = GdiCapture.listMonitors(this.bind);
-    const targetMon = monitors.find((m) => m.index === monIdx) ?? monitors[0] ?? {
-      index: 1,
-      label: 'Primary',
-      x: 0,
-      y: 0,
-      width: Number(this.bind.GetSystemMetrics(0)) || 1920,
-      height: Number(this.bind.GetSystemMetrics(1)) || 1080,
-      primary: true,
-    };
-
-    const native = {
-      x: targetMon.x,
-      y: targetMon.y,
-      width: targetMon.width,
-      height: targetMon.height,
-    };
-
-    this.ensureCursorInRect(native);
-
-    this.idCounter += 1;
-    const peerId = `nuvio-screen-${Date.now()}-${this.idCounter}`;
-
-    let ddaPromise: Promise<{ supported: boolean; outputs: Array<{ idx: number; width: number; height: number }> }> | null = null;
-    if (monIdx !== 0) {
-      ddaPromise = probeDdaOutputs();
-    }
-    const h264CodecPromise = !onTunnel && offerSdp.trim() ? resolveH264StreamCodec() : Promise.resolve<'h264_amf' | 'libx264'>('libx264');
-
+    const gen = ++this.startGeneration;
+    this.pendingOwnerId = ownerId;
     let webrtc: WebRtcScreenSession | null = null;
-    let sessionRef: ScreenSession | null = null;
-    if (!onTunnel && offerSdp && offerSdp.trim()) {
-      try {
-        webrtc = await WebRtcScreenSession.create(peerId, {
-          offerSdp,
-          fps: dims.fps,
-          width: dims.width,
-          height: dims.height,
-          portRangeBegin: this.cfg.screen.portRangeBegin,
-          portRangeEnd: this.cfg.screen.portRangeEnd,
-          onTrackOpen: () => {
-            const cur = sessionRef;
-            if (!cur || this.session !== cur) return;
-            // Track open: re-arm fallback timeout while waiting for the first decoded frame on the client
-            if (cur.fallbackTimer) {
-              clearTimeout(cur.fallbackTimer);
+    try {
+      attachToInteractiveDesktop(this.bind);
+      const dims = profileDims(profile);
+      const monitors = GdiCapture.listMonitors(this.bind);
+      const targetMon = monitors.find((m) => m.index === monIdx) ?? monitors[0] ?? {
+        index: 1,
+        label: 'Primary',
+        x: 0,
+        y: 0,
+        width: Number(this.bind.GetSystemMetrics(0)) || 1920,
+        height: Number(this.bind.GetSystemMetrics(1)) || 1080,
+        primary: true,
+      };
+
+      const native = {
+        x: targetMon.x,
+        y: targetMon.y,
+        width: targetMon.width,
+        height: targetMon.height,
+      };
+
+      this.ensureCursorInRect(native);
+
+      this.idCounter += 1;
+      const peerId = `nuvio-screen-${Date.now()}-${this.idCounter}`;
+
+      let ddaPromise: Promise<{ supported: boolean; outputs: Array<{ idx: number; width: number; height: number }> }> | null = null;
+      if (monIdx !== 0) {
+        ddaPromise = probeDdaOutputs();
+      }
+      const h264CodecPromise = !onTunnel && offerSdp.trim() ? resolveH264StreamCodec() : Promise.resolve<'h264_amf' | 'libx264'>('libx264');
+
+      let sessionRef: ScreenSession | null = null;
+      if (!onTunnel && offerSdp && offerSdp.trim()) {
+        try {
+          webrtc = await WebRtcScreenSession.create(peerId, {
+            offerSdp,
+            fps: dims.fps,
+            width: dims.width,
+            height: dims.height,
+            portRangeBegin: this.cfg.screen.portRangeBegin,
+            portRangeEnd: this.cfg.screen.portRangeEnd,
+            onTrackOpen: () => {
+              const cur = sessionRef;
+              if (!cur || this.session !== cur) return;
+              // Track open: re-arm fallback timeout while waiting for the first decoded frame on the client
+              if (cur.fallbackTimer) {
+                clearTimeout(cur.fallbackTimer);
+              }
+              if (!cur.webrtcLive && !cur.mjpeg.isRunning()) {
+                cur.fallbackTimer = setTimeout(() => {
+                  cur.fallbackTimer = null;
+                  if (this.session === cur && !cur.webrtcLive && !cur.mjpeg.isRunning()) {
+                    warn('screen: WebRTC had no confirmed frame after track open; enabling MJPEG fallback');
+                    this.ensureMjpegFallback(cur);
+                  }
+                }, 1500);
+                cur.fallbackTimer.unref?.();
+              }
+            },
+            onDisconnected: (st) => {
+              const cur = sessionRef;
+              if (!cur || this.session !== cur || !cur.webrtc) return;
+              cur.webrtcLive = false;
+              if (!cur.mjpeg.isRunning() && !cur.fallbackTimer && (st === 'failed' || st === 'disconnected')) {
+                warn(`screen: WebRTC ${st}; stopping H.264 and enabling MJPEG fallback`);
+                this.stopH264Only(cur);
+                this.ensureMjpegFallback(cur);
+              }
+            },
+          });
+        } catch (err) {
+          warn(`screen: WebRTC unavailable (${(err as Error).message}); falling back to direct WS MJPEG stream`);
+          webrtc = null;
+        }
+      }
+
+      if (gen !== this.startGeneration) {
+        webrtc?.close();
+        return { ok: false, detail: 'superseded by newer screen_start or stop' };
+      }
+
+      this.statusCb?.('starting', profile, undefined, monIdx);
+
+      const maxW = profile.startsWith('1080p') ? 1920 : 1280;
+      const maxH = profile.startsWith('1080p') ? 1080 : 800;
+      const ratio = Math.min(maxW / native.width, maxH / native.height, 1);
+      const outW = Math.max(2, Math.round(native.width * ratio) & ~1);
+      const outH = Math.max(2, Math.round(native.height * ratio) & ~1);
+      const mjpegFps = onTunnel ? Math.min(dims.fps, profile.endsWith('60') ? 45 : 30) : dims.fps;
+      const qscale = onTunnel ? 6 : 5;
+
+      let ddaOutputIdx: number | null = null;
+      if (ddaPromise) {
+        const dda = await ddaPromise;
+        if (gen !== this.startGeneration) {
+          webrtc?.close();
+          return { ok: false, detail: 'superseded by newer screen_start or stop' };
+        }
+        if (dda.supported) {
+          const matches = dda.outputs.filter((o) => o.width === native.width && o.height === native.height);
+          if (matches.length === 1) {
+            ddaOutputIdx = matches[0].idx;
+          } else if (matches.length > 1) {
+            const sameResMonitors = monitors.filter((m) => m.width === native.width && m.height === native.height);
+            const ord = sameResMonitors.findIndex((m) => m.index === targetMon.index);
+            if (ord >= 0 && ord < matches.length) {
+              ddaOutputIdx = matches[ord].idx;
             }
-            if (!cur.webrtcLive && !cur.mjpeg.isRunning()) {
-              cur.fallbackTimer = setTimeout(() => {
-                cur.fallbackTimer = null;
-                if (this.session === cur && !cur.webrtcLive && !cur.mjpeg.isRunning()) {
-                  warn('screen: WebRTC had no confirmed frame after track open; enabling MJPEG fallback');
-                  this.ensureMjpegFallback(cur);
-                }
-              }, 1500);
-              cur.fallbackTimer.unref?.();
-            }
-          },
-          onDisconnected: (st) => {
-            const cur = sessionRef;
-            if (!cur || this.session !== cur || !cur.webrtc) return;
-            cur.webrtcLive = false;
-            if (!cur.mjpeg.isRunning() && !cur.fallbackTimer && (st === 'failed' || st === 'disconnected')) {
-              warn(`screen: WebRTC ${st}; enabling MJPEG fallback`);
-              this.ensureMjpegFallback(cur);
-            }
-          },
+          }
+        }
+      }
+
+      const initialTier: MjpegCaptureMode = ddaOutputIdx !== null ? 'ddagrab' : 'gdigrab';
+      const h264Codec = await h264CodecPromise;
+      if (gen !== this.startGeneration) {
+        webrtc?.close();
+        return { ok: false, detail: 'superseded by newer screen_start or stop' };
+      }
+
+      let audio: AudioLoopbackStreamer | null = null;
+      if (this.audioEnabled) {
+        audio = new AudioLoopbackStreamer((pkt) => {
+          if (this.session && this.session.ownerId === ownerId && this.audioEnabled) {
+            this.audioCb?.(ownerId, pkt);
+          }
         });
-      } catch (err) {
-        warn(`screen: WebRTC unavailable (${(err as Error).message}); falling back to direct WS MJPEG stream`);
-        webrtc = null;
+        audio.start();
+      }
+
+      const session: ScreenSession = {
+        ownerId,
+        profile,
+        monitor: monIdx,
+        isTunnel: onTunnel,
+        rect: native,
+        outW,
+        outH,
+        mjpegFps,
+        qscale,
+        targetFps: dims.fps,
+        h264BitrateKbps: profileBitrateKbps(profile),
+        h264Codec,
+        h264Tier: initialTier,
+        hasH264Frame: false,
+        h264StartupTimer: null,
+        h264: new H264StreamEncoder(),
+        ddaOutputIdx,
+        captureTier: initialTier,
+        hasFrame: false,
+        startupTimer: null,
+        fallbackTimer: null,
+        webrtcLive: false,
+        mjpeg: new MjpegEncoder(),
+        worker: null,
+        audio,
+        webrtc,
+      };
+      sessionRef = session;
+      this.session = session;
+
+      let encDetail: string;
+      if (webrtc) {
+        encDetail = this.launchH264Tier(session, initialTier, h264Codec);
+        // Enable MJPEG fallback only if WebRTC does not confirm a decoded frame within 1500ms
+        session.fallbackTimer = setTimeout(() => {
+          session.fallbackTimer = null;
+          if (this.session === session && !session.webrtcLive && !session.mjpeg.isRunning()) {
+            warn('screen: WebRTC still has no confirmed frame after 1500ms; enabling MJPEG fallback');
+            this.ensureMjpegFallback(session);
+          }
+        }, 1500);
+        session.fallbackTimer.unref?.();
+        this.statusCb?.('running', profile, 'webrtc-h264', monIdx);
+      } else {
+        encDetail = this.launchCaptureTier(session, initialTier);
+        this.statusCb?.('running', profile, 'mjpeg', monIdx);
+      }
+      info(`screen: streaming ${profile} monitor=${monIdx} active (${native.width}x${native.height}@(${native.x},${native.y}) -> ${outW}x${outH}, ${encDetail})`);
+      return { ok: true, detail: encDetail, answerSdp: webrtc?.answer.sdp };
+    } finally {
+      if (this.startGeneration === gen) {
+        this.pendingOwnerId = null;
       }
     }
-
-    this.statusCb?.('starting', profile, undefined, monIdx);
-
-    const maxW = profile.startsWith('1080p') ? 1920 : 1280;
-    const maxH = profile.startsWith('1080p') ? 1080 : 800;
-    const ratio = Math.min(maxW / native.width, maxH / native.height, 1);
-    const outW = Math.max(2, Math.round(native.width * ratio) & ~1);
-    const outH = Math.max(2, Math.round(native.height * ratio) & ~1);
-    const mjpegFps = onTunnel ? Math.min(dims.fps, profile.endsWith('60') ? 45 : 30) : dims.fps;
-    const qscale = onTunnel ? 6 : 5;
-
-    let ddaOutputIdx: number | null = null;
-    if (ddaPromise) {
-      const dda = await ddaPromise;
-      if (dda.supported) {
-        const matches = dda.outputs.filter((o) => o.width === native.width && o.height === native.height);
-        if (matches.length === 1) {
-          ddaOutputIdx = matches[0].idx;
-        }
-      }
-    }
-
-    const initialTier: MjpegCaptureMode = ddaOutputIdx !== null ? 'ddagrab' : 'gdigrab';
-    const h264Codec = await h264CodecPromise;
-
-    let audio: AudioLoopbackStreamer | null = null;
-    if (this.audioEnabled) {
-      audio = new AudioLoopbackStreamer((pkt) => {
-        if (this.session && this.session.ownerId === ownerId && this.audioEnabled) {
-          this.audioCb?.(ownerId, pkt);
-        }
-      });
-      audio.start();
-    }
-
-    const session: ScreenSession = {
-      ownerId,
-      profile,
-      monitor: monIdx,
-      isTunnel: onTunnel,
-      rect: native,
-      outW,
-      outH,
-      mjpegFps,
-      qscale,
-      targetFps: dims.fps,
-      h264BitrateKbps: profileBitrateKbps(profile),
-      h264Codec,
-      h264Tier: initialTier,
-      hasH264Frame: false,
-      h264StartupTimer: null,
-      h264: new H264StreamEncoder(),
-      ddaOutputIdx,
-      captureTier: initialTier,
-      hasFrame: false,
-      startupTimer: null,
-      fallbackTimer: null,
-      webrtcLive: false,
-      mjpeg: new MjpegEncoder(),
-      worker: null,
-      audio,
-      webrtc,
-    };
-    sessionRef = session;
-    this.session = session;
-
-    let encDetail: string;
-    if (webrtc) {
-      encDetail = this.launchH264Tier(session, initialTier, h264Codec);
-      // Enable MJPEG fallback only if WebRTC does not confirm a decoded frame within 1500ms
-      session.fallbackTimer = setTimeout(() => {
-        session.fallbackTimer = null;
-        if (this.session === session && !session.webrtcLive && !session.mjpeg.isRunning()) {
-          warn('screen: WebRTC still has no confirmed frame after 1500ms; enabling MJPEG fallback');
-          this.ensureMjpegFallback(session);
-        }
-      }, 1500);
-      session.fallbackTimer.unref?.();
-      this.statusCb?.('running', profile, 'webrtc-h264', monIdx);
-    } else {
-      encDetail = this.launchCaptureTier(session, initialTier);
-      this.statusCb?.('running', profile, 'mjpeg', monIdx);
-    }
-    info(`screen: streaming ${profile} monitor=${monIdx} active (${native.width}x${native.height}@(${native.x},${native.y}) -> ${outW}x${outH}, ${encDetail})`);
-    return { ok: true, detail: encDetail, answerSdp: webrtc?.answer.sdp };
   }
 
   /** Android client confirms SurfaceViewRenderer decoded and displayed a real H.264 frame -> stops MJPEG TCP stream. */
@@ -644,6 +674,8 @@ export class ScreenServer {
 
   /** Stops immediately (Screen tab closed or WebSocket disconnected). */
   stop(reason: string): boolean {
+    this.startGeneration += 1;
+    this.pendingOwnerId = null;
     const s = this.session;
     if (!s) return false;
     this.session = null;
@@ -655,9 +687,14 @@ export class ScreenServer {
     return true;
   }
 
-  stopIfOwner(ownerId: string): boolean {
-    if (this.session && ownerId && this.session.ownerId === ownerId) {
-      this.stop('client disconnected');
+  stopIfOwner(ownerId: string, reason = 'client disconnected'): boolean {
+    if (!ownerId) return false;
+    if (this.pendingOwnerId === ownerId) {
+      this.startGeneration += 1;
+      this.pendingOwnerId = null;
+    }
+    if (this.session && this.session.ownerId === ownerId) {
+      this.stop(reason);
       return true;
     }
     return false;

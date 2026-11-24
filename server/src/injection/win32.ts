@@ -29,6 +29,7 @@ export interface Win32Bindings {
   OpenDesktopW: W32Fn;
   OpenInputDesktop: W32Fn;
   SetThreadDesktop: W32Fn;
+  CloseDesktop?: W32Fn;
   FindWindowW: W32Fn;
   GetForegroundWindow: W32Fn;
   GetTopWindow: W32Fn;
@@ -84,6 +85,7 @@ export function loadWin32(): Win32Bindings {
     OpenDesktopW: sig('uintptr_t __stdcall OpenDesktopW(const wchar_t *lpszDesktop, uint32 dwFlags, int fInherit, uint32 dwDesiredAccess)'),
     OpenInputDesktop: sig('uintptr_t __stdcall OpenInputDesktop(uint32 dwFlags, int fInherit, uint32 dwDesiredAccess)'),
     SetThreadDesktop: sig('int __stdcall SetThreadDesktop(uintptr_t hDesktop)'),
+    CloseDesktop: sig('int __stdcall CloseDesktop(uintptr_t hDesktop)'),
     FindWindowW: sig('uintptr_t __stdcall FindWindowW(const wchar_t *lpClassName, const wchar_t *lpWindowName)'),
     GetForegroundWindow: sig('uintptr_t __stdcall GetForegroundWindow(void)'),
     GetTopWindow: sig('uintptr_t __stdcall GetTopWindow(uintptr_t hWnd)'),
@@ -110,7 +112,7 @@ export function loadWin32(): Win32Bindings {
     SendMessageW: sig('intptr_t __stdcall SendMessageW(uintptr_t hWnd, uint32 Msg, uintptr_t wParam, intptr_t lParam)'),
     PostMessageW: sig('int __stdcall PostMessageW(uintptr_t hWnd, uint32 Msg, uintptr_t wParam, intptr_t lParam)'),
     MessageBeep: sig('int __stdcall MessageBeep(uint32 uType)'),
-    mouse_event: sig('void __stdcall mouse_event(uint32 dwFlags, uint32 dx, uint32 dy, uint32 dwData, uintptr_t dwExtraInfo)'),
+    mouse_event: sig('void __stdcall mouse_event(uint32 dwFlags, int32 dx, int32 dy, int32 dwData, uintptr_t dwExtraInfo)'),
   };
 
   attachToInteractiveDesktop(bindings);
@@ -122,13 +124,22 @@ export function loadWin32(): Win32Bindings {
  * so FindWindowW, SendInput, and BitBlt work reliably when started from a non-interactive host.
  */
 export function attachToInteractiveDesktop(bind: Win32Bindings): boolean {
+  let hDesk: unknown = 0;
   try {
-    const hDesk = bind.OpenDesktopW('Default', 0, 0, DESKTOP_ALL_ACCESS) || bind.OpenInputDesktop(0, 0, DESKTOP_ALL_ACCESS);
+    hDesk = bind.OpenDesktopW('Default', 0, 0, DESKTOP_ALL_ACCESS) || bind.OpenInputDesktop(0, 0, DESKTOP_ALL_ACCESS);
     if (hwndValue(hDesk) !== 0n) {
       return Number(bind.SetThreadDesktop(hDesk)) !== 0;
     }
   } catch {
     // ignore
+  } finally {
+    if (hwndValue(hDesk) !== 0n) {
+      try {
+        bind.CloseDesktop?.(hDesk);
+      } catch {
+        // ignore
+      }
+    }
   }
   return false;
 }
@@ -229,8 +240,9 @@ export function ensureForeground(bind: Win32Bindings, hwnd: unknown): Foreground
 
   let set = bind.SetForegroundWindow(hwnd);
   if (!set || !sameHwnd(bind.GetForegroundWindow(), hwnd)) {
-    sendKeyRaw(bind, { vk: VK_MENU, scan: 0x38, extended: false }, true);
+    // Press and immediately release Alt (keydown -> keyup) to satisfy Windows foreground lock
     sendKeyRaw(bind, { vk: VK_MENU, scan: 0x38, extended: false }, false);
+    sendKeyRaw(bind, { vk: VK_MENU, scan: 0x38, extended: false }, true);
     set = bind.SetForegroundWindow(hwnd) || bind.BringWindowToTop(hwnd);
   }
 

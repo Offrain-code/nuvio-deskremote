@@ -849,6 +849,7 @@ void refreshStatusAndConfig();
 void refreshPairInfo(false);
 
 setInterval(() => {
+  if (document.hidden) return;
   if (pinSecondsLeft > 0) {
     pinSecondsLeft -= 1;
     updateCountdownUi();
@@ -859,6 +860,14 @@ setInterval(() => {
 }, 1000);
 
 setInterval(() => {
+  if (document.hidden) return;
   void refreshStatusAndConfig();
   void refreshPairInfo(false);
 }, 5000);
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    void refreshStatusAndConfig();
+    void refreshPairInfo(false);
+  }
+});

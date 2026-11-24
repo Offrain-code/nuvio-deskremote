@@ -62,6 +62,8 @@ function main(): void {
     if (shuttingDown) return;
     shuttingDown = true;
     info(`shutting down (${reason})`);
+    injector.releaseHeldMouseButtons();
+    server.stop();
     bridge.stop();
     screen.stop('server shutting down');
     logtail.stop();

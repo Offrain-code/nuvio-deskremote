@@ -196,8 +196,10 @@ export class H264AccessUnitParser {
         nals.unshift(this.cachedSps, this.cachedPps);
         types.unshift(7, 8);
       } else if (!hasPps) {
-        nals.unshift(this.cachedPps);
-        types.unshift(8);
+        const spsIdx = types.indexOf(7);
+        const insertAt = spsIdx >= 0 ? spsIdx + 1 : 0;
+        nals.splice(insertAt, 0, this.cachedPps);
+        types.splice(insertAt, 0, 8);
       } else if (!hasSps) {
         nals.unshift(this.cachedSps);
         types.unshift(7);

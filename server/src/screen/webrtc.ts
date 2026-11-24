@@ -104,66 +104,72 @@ export class WebRtcScreenSession {
       portRangeBegin: p.portRangeBegin,
       portRangeEnd: p.portRangeEnd,
     });
+    let track: ndc.Track | null = null;
+    try {
+      // Extract the exact video mid and H.264 payloadType from the Android offer
+      const midMatch = /m=video[\s\S]*?a=mid:([^\r\n]+)/.exec(p.offerSdp);
+      const videoMid = midMatch ? midMatch[1].trim() : '0';
+      const codec = pickH264OfferCodec(p.offerSdp);
+      const playoutDelayId = pickPlayoutDelayExtId(p.offerSdp);
 
-    // Extract the exact video mid and H.264 payloadType from the Android offer
-    const midMatch = /m=video[\s\S]*?a=mid:([^\r\n]+)/.exec(p.offerSdp);
-    const videoMid = midMatch ? midMatch[1].trim() : '0';
-    const codec = pickH264OfferCodec(p.offerSdp);
-    const playoutDelayId = pickPlayoutDelayExtId(p.offerSdp);
-
-    // IMPORTANT: addTrack BEFORE setRemoteDescription, and do NOT call setLocalDescription() afterwards
-    const video = new ndc.Video(videoMid, 'SendOnly');
-    video.addH264Codec(codec.payloadType, codec.fmtp);
-    if (playoutDelayId !== null) {
-      // Advertise extmap on local media description to preserve playout-delay in the answer
-      video.parseSdpLine(`a=extmap:${playoutDelayId} http://www.webrtc.org/experiments/rtp-hdrext/playout-delay`);
-    }
-    const track = pc.addTrack(video);
-
-    const cfg = new ndc.RtpPacketizationConfig(pickSsrc(id), 'nuvio-screen', codec.payloadType, 90000);
-    if (playoutDelayId !== null) {
-      // playout-delay 0..0 instructs libwebrtc to render immediately without extra jitter buffering
-      cfg.playoutDelayId = playoutDelayId;
-      cfg.playoutDelayMin = 0;
-      cfg.playoutDelayMax = 0;
-    }
-    const packetizer = new ndc.H264RtpPacketizer('StartSequence', cfg, 1180);
-    const sr = new ndc.RtcpSrReporter(cfg);
-    const nack = new ndc.RtcpNackResponder(512);
-    packetizer.addToChain(sr);
-    sr.addToChain(nack);
-    track.setMediaHandler(packetizer);
-
-    let sessionRef: WebRtcScreenSession | null = null;
-    pc.onGatheringStateChange((st) => info(`webrtc: gathering ${st}`));
-    track.onOpen(() => {
-      info(
-        `webrtc: track open (pt=${codec.payloadType}, playoutDelayId=${playoutDelayId ?? 'none'}, H.264 stream active)`,
-      );
-      sessionRef?.flushCachedKeyFrame();
-      p.onTrackOpen?.();
-    });
-    track.onError((msg: string) => warn(`webrtc: track error: ${msg}`));
-    pc.onStateChange((st) => {
-      info(`webrtc: pc state ${st}`);
-      if (st === 'failed' || st === 'disconnected' || st === 'closed') {
-        p.onDisconnected?.(st);
+      // IMPORTANT: addTrack BEFORE setRemoteDescription, and do NOT call setLocalDescription() afterwards
+      const video = new ndc.Video(videoMid, 'SendOnly');
+      video.addH264Codec(codec.payloadType, codec.fmtp);
+      if (playoutDelayId !== null) {
+        // Advertise extmap on local media description to preserve playout-delay in the answer
+        video.parseSdpLine(`a=extmap:${playoutDelayId} http://www.webrtc.org/experiments/rtp-hdrext/playout-delay`);
       }
-    });
+      track = pc.addTrack(video);
 
-    pc.setRemoteDescription(p.offerSdp, 'offer');
+      const cfg = new ndc.RtpPacketizationConfig(pickSsrc(id), 'nuvio-screen', codec.payloadType, 90000);
+      if (playoutDelayId !== null) {
+        // playout-delay 0..0 instructs libwebrtc to render immediately without extra jitter buffering
+        cfg.playoutDelayId = playoutDelayId;
+        cfg.playoutDelayMin = 0;
+        cfg.playoutDelayMax = 0;
+      }
+      const packetizer = new ndc.H264RtpPacketizer('StartSequence', cfg, 1180);
+      const sr = new ndc.RtcpSrReporter(cfg);
+      const nack = new ndc.RtcpNackResponder(512);
+      packetizer.addToChain(sr);
+      sr.addToChain(nack);
+      track.setMediaHandler(packetizer);
 
-    // On LAN, resolve quickly as soon as the first local candidates are gathered
-    await waitForGatheringFast(pc, 400);
+      let sessionRef: WebRtcScreenSession | null = null;
+      pc.onGatheringStateChange((st) => info(`webrtc: gathering ${st}`));
+      track.onOpen(() => {
+        info(
+          `webrtc: track open (pt=${codec.payloadType}, playoutDelayId=${playoutDelayId ?? 'none'}, H.264 stream active)`,
+        );
+        sessionRef?.flushCachedKeyFrame();
+        p.onTrackOpen?.();
+      });
+      track.onError((msg: string) => warn(`webrtc: track error: ${msg}`));
+      pc.onStateChange((st) => {
+        info(`webrtc: pc state ${st}`);
+        if (st === 'failed' || st === 'disconnected' || st === 'closed') {
+          p.onDisconnected?.(st);
+        }
+      });
 
-    const answer = pc.localDescription();
-    if (!answer || !answer.sdp) {
-      throw new Error('localDescription() was null after setRemoteDescription (negotiation failed)');
+      pc.setRemoteDescription(p.offerSdp, 'offer');
+
+      // On LAN, resolve quickly as soon as the first local candidates are gathered
+      await waitForGatheringFast(pc, 400);
+
+      const answer = pc.localDescription();
+      if (!answer || !answer.sdp) {
+        throw new Error('localDescription() was null after setRemoteDescription (negotiation failed)');
+      }
+
+      const session = new WebRtcScreenSession(pc, track, cfg, answer);
+      sessionRef = session;
+      return session;
+    } catch (err) {
+      try { track?.close(); } catch { /* ignore */ }
+      try { pc.close(); } catch { /* ignore */ }
+      throw err;
     }
-
-    const session = new WebRtcScreenSession(pc, track, cfg, answer);
-    sessionRef = session;
-    return session;
   }
 
   private constructor(

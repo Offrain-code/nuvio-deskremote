@@ -27,17 +27,19 @@ export class TunnelManager {
 
   public stop(): void {
     this.stopped = true;
+    this.url = null;
     if (this.restartTimer) {
       clearTimeout(this.restartTimer);
       this.restartTimer = null;
     }
-    if (this.proc) {
+    const proc = this.proc;
+    this.proc = null;
+    if (proc) {
       try {
-        this.proc.kill();
+        proc.kill();
       } catch {
         // ignore
       }
-      this.proc = null;
     }
   }
 
@@ -46,6 +48,7 @@ export class TunnelManager {
     const programFiles = process.env.ProgramFiles ?? 'C:\\Program Files';
     const programFilesX86 = process.env['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
     const candidates = [
+      path.resolve(__dirname, '..', 'bin', 'cloudflared.exe'),
       path.resolve(process.cwd(), 'bin', 'cloudflared.exe'),
       localAppData ? path.join(localAppData, 'Microsoft', 'WinGet', 'Links', 'cloudflared.exe') : '',
       path.join(programFiles, 'cloudflared', 'cloudflared.exe'),
@@ -92,9 +95,12 @@ export class TunnelManager {
       child.stderr?.on('data', parseChunk);
 
       child.on('error', (err) => {
+        if (this.proc !== child) return;
         const errCode = (err as NodeJS.ErrnoException).code;
         if (errCode === 'ENOENT') {
           this.stopped = true;
+          this.proc = null;
+          this.url = null;
           warn('tunnel: cloudflared not found in server/bin or PATH (install Cloudflare.cloudflared to enable Remote Access)');
           return;
         }
@@ -102,11 +108,13 @@ export class TunnelManager {
       });
 
       child.on('close', (code) => {
+        if (this.proc !== child) return;
         this.proc = null;
         this.url = null;
         if (!this.stopped) {
           warn(`tunnel: cloudflared exited (code=${code ?? '?'}); restarting in 5s`);
           this.restartTimer = setTimeout(() => this.spawnTunnel(), 5000);
+          this.restartTimer.unref?.();
         }
       });
     } catch (err) {

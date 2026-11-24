@@ -1,14 +1,14 @@
 ; Automatic lifecycle and Windows Firewall hooks during Nuvio DeskRemote Companion install/uninstall
 ; Runs elevated via bundle.windows.nsis.installMode = "perMachine"
 !macro NSIS_HOOK_PREINSTALL
-  ; Stop only the bundled Companion Node.js server before overwriting files (never unrelated node.exe processes)
-  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ieq \"$INSTDIR\resources\server\node.exe\" } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  ; Stop the Companion app and all bundled child helpers before overwriting files, and restore PC speaker mute state
+  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$root = \"$INSTDIR\resources\server\"; Get-Process -Name nuvio-deskremote-companion -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Get-Process -Name node,ffmpeg,cloudflared,nuvio-audio-capture -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue; $$unm = Join-Path $$root \"bin\nuvio-audio-capture.exe\"; if (Test-Path $$unm) { Start-Process -FilePath $$unm -ArgumentList \"--unmute\" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue }"'
   Sleep 600
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  ; Stop the Companion app and its bundled Node.js server cleanly before removing files
-  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "Get-Process -Name nuvio-deskremote-companion -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Get-Process -Name node -ErrorAction SilentlyContinue | Where-Object { $$_.Path -ieq \"$INSTDIR\resources\server\node.exe\" } | Stop-Process -Force -ErrorAction SilentlyContinue"'
+  ; Stop the Companion app and all bundled child helpers cleanly before removing files, and restore PC speaker mute state
+  nsExec::ExecToLog 'powershell.exe -NoProfile -NonInteractive -WindowStyle Hidden -Command "$$root = \"$INSTDIR\resources\server\"; Get-Process -Name nuvio-deskremote-companion -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; Get-Process -Name node,ffmpeg,cloudflared,nuvio-audio-capture -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$root, [System.StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue; $$unm = Join-Path $$root \"bin\nuvio-audio-capture.exe\"; if (Test-Path $$unm) { Start-Process -FilePath $$unm -ArgumentList \"--unmute\" -WindowStyle Hidden -Wait -ErrorAction SilentlyContinue }"'
   Sleep 600
 !macroend
 
@@ -22,16 +22,18 @@
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)"'
 
-  ; Allow bundled Node.js Companion server + explicit LAN ports on Private networks
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Server TCP)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=TCP profile=private'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Server UDP)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=UDP profile=private'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (WS 8787)" dir=in action=allow protocol=TCP localport=8787 profile=private'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Pair 8765)" dir=in action=allow protocol=TCP localport=8765 profile=private'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)" dir=in action=allow protocol=UDP localport=8766 profile=private'
-  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)" dir=in action=allow protocol=UDP localport=8768 profile=private'
+  ; Allow bundled Node.js Companion server + explicit LAN ports restricted to local subnet (works on Private and Public home Wi-Fi)
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Server TCP)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=TCP remoteip=localsubnet profile=private,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Server UDP)" dir=in action=allow program="$INSTDIR\resources\server\node.exe" protocol=UDP remoteip=localsubnet profile=private,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (WS 8787)" dir=in action=allow protocol=TCP localport=8787 remoteip=localsubnet profile=private,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (Pair 8765)" dir=in action=allow protocol=TCP localport=8765 remoteip=localsubnet profile=private,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Discovery 8766)" dir=in action=allow protocol=UDP localport=8766 remoteip=localsubnet profile=private,public'
+  nsExec::ExecToLog 'netsh advfirewall firewall add rule name="Nuvio DeskRemote Companion (UDP Mouse 8768)" dir=in action=allow protocol=UDP localport=8768 remoteip=localsubnet profile=private,public'
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  ; Remove Windows autostart entry and Firewall rules on uninstall
+  nsExec::ExecToLog 'reg.exe delete "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v "NuvioDeskRemoteCompanion" /f'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (Server TCP)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (Server UDP)"'
   nsExec::ExecToLog 'netsh advfirewall firewall delete rule name="Nuvio DeskRemote Companion (WS 8787)"'

@@ -84,9 +84,11 @@ namespace NuvioAudio
         private const int AUDCLNT_SHAREMODE_SHARED = 0;
         private const uint AUDCLNT_STREAMFLAGS_LOOPBACK = 0x00020000;
         private const uint AUDCLNT_BUFFERFLAGS_SILENT = 0x2;
+        private const int AUDCLNT_E_DEVICE_INVALIDATED = unchecked((int)0x88890004);
         private const int TARGET_RATE = 24000;
 
         private static IAudioEndpointVolume _endpointVol = null;
+        private static bool _wasAlreadyMuted = false;
         private static bool _restored = false;
 
         [DllImport("Kernel32")]
@@ -98,6 +100,7 @@ namespace NuvioAudio
         {
             if (_restored || _endpointVol == null) return;
             _restored = true;
+            if (_wasAlreadyMuted) return;
             try
             {
                 Guid empty = Guid.Empty;
@@ -148,8 +151,16 @@ namespace NuvioAudio
                     if (device.Activate(ref iidVol, CLSCTX_ALL, IntPtr.Zero, out volObj) == 0 && volObj != null)
                     {
                         _endpointVol = (IAudioEndpointVolume)volObj;
-                        Guid empty = Guid.Empty;
-                        _endpointVol.SetMute(true, ref empty);
+                        bool alreadyMuted = false;
+                        if (_endpointVol.GetMute(out alreadyMuted) == 0)
+                        {
+                            _wasAlreadyMuted = alreadyMuted;
+                        }
+                        if (!_wasAlreadyMuted)
+                        {
+                            Guid empty = Guid.Empty;
+                            _endpointVol.SetMute(true, ref empty);
+                        }
                     }
                 }
                 catch { }
@@ -179,6 +190,8 @@ namespace NuvioAudio
                 // 20ms low-latency buffer
                 long hnsBufferDuration = 200000;
                 hr = audioClient.Initialize(AUDCLNT_SHAREMODE_SHARED, AUDCLNT_STREAMFLAGS_LOOPBACK, hnsBufferDuration, 0, mixFormatPtr, IntPtr.Zero);
+                Marshal.FreeCoTaskMem(mixFormatPtr);
+                mixFormatPtr = IntPtr.Zero;
                 if (hr != 0) { RestoreMuteState(); return 5; }
 
                 Guid iidCaptureClient = new Guid("C8ADBD64-E71E-48a0-A4DE-185C395CD317");
@@ -201,14 +214,19 @@ namespace NuvioAudio
 
                 byte[] rawBuf = new byte[65536];
 
-                // Automatic Gain Control (AGC + 3.2x preamp with soft limiter)
-                // Keeps mobile speaker playback loud and balanced even when PC player volume is low
-                float agcGain = 3.2f;
+                // Automatic Gain Control (AGC with 1.0x floor and tanh soft limiter)
+                // Keeps mobile speaker playback clear without harsh digital clipping
+                float agcGain = 2.0f;
 
                 while (true)
                 {
                     uint nextPacketSize;
-                    captureClient.GetNextPacketSize(out nextPacketSize);
+                    hr = captureClient.GetNextPacketSize(out nextPacketSize);
+                    if (hr == AUDCLNT_E_DEVICE_INVALIDATED || hr < 0)
+                    {
+                        RestoreMuteState();
+                        return 8;
+                    }
                     if (nextPacketSize == 0)
                     {
                         Thread.Sleep(5);
@@ -222,6 +240,11 @@ namespace NuvioAudio
                         uint flags;
                         ulong devPos, qpcPos;
                         hr = captureClient.GetBuffer(out dataPtr, out numFrames, out flags, out devPos, out qpcPos);
+                        if (hr == AUDCLNT_E_DEVICE_INVALIDATED)
+                        {
+                            RestoreMuteState();
+                            return 8;
+                        }
                         if (hr != 0) break;
 
                         bool silent = (flags & AUDCLNT_BUFFERFLAGS_SILENT) != 0 || dataPtr == IntPtr.Zero;
@@ -244,9 +267,9 @@ namespace NuvioAudio
                                 float aL = Math.Abs(BitConverter.ToSingle(rawBuf, bOff));
                                 if (aL > blockPeak) blockPeak = aL;
                             }
-                            float targetGain = 0.88f / blockPeak;
-                            if (targetGain > 6.5f) targetGain = 6.5f;
-                            if (targetGain < 1.4f) targetGain = 1.4f;
+                            float targetGain = 0.85f / blockPeak;
+                            if (targetGain > 5.0f) targetGain = 5.0f;
+                            if (targetGain < 1.0f) targetGain = 1.0f;
                             // Fast attack on peaks, smooth release on quiet passages
                             if (targetGain < agcGain)
                                 agcGain = agcGain * 0.70f + targetGain * 0.30f;
@@ -254,7 +277,7 @@ namespace NuvioAudio
                                 agcGain = agcGain * 0.96f + targetGain * 0.04f;
                         }
 
-                        // Resample from srcRate to 24000Hz Stereo s16le with preamp + soft limiter
+                        // Resample from srcRate to 24000Hz Stereo s16le with soft tanh limiter
                         while (srcPosFrac < numFrames)
                         {
                             int frameIdx = (int)srcPosFrac;
@@ -266,24 +289,27 @@ namespace NuvioAudio
                                 int baseOff = frameIdx * blockAlign;
                                 if (isFloat && bitsPerSample == 32)
                                 {
-                                    float fl = BitConverter.ToSingle(rawBuf, baseOff) * agcGain;
-                                    float fr = (srcChannels >= 2 ? BitConverter.ToSingle(rawBuf, baseOff + 4) : BitConverter.ToSingle(rawBuf, baseOff)) * agcGain;
-
-                                    // Clamp softly to prevent harsh digital clipping
-                                    if (fl > 1.0f) fl = 1.0f; else if (fl < -1.0f) fl = -1.0f;
-                                    if (fr > 1.0f) fr = 1.0f; else if (fr < -1.0f) fr = -1.0f;
-
+                                    float fl = (float)Math.Tanh(BitConverter.ToSingle(rawBuf, baseOff) * agcGain);
+                                    float fr = (float)Math.Tanh((srcChannels >= 2 ? BitConverter.ToSingle(rawBuf, baseOff + 4) : BitConverter.ToSingle(rawBuf, baseOff)) * agcGain);
+                                    left = (short)(fl * 32760.0f);
+                                    right = (short)(fr * 32760.0f);
+                                }
+                                else if (bitsPerSample == 24)
+                                {
+                                    int sL = (rawBuf[baseOff] | (rawBuf[baseOff + 1] << 8) | ((sbyte)rawBuf[baseOff + 2] << 16));
+                                    int rOff = srcChannels >= 2 ? baseOff + 3 : baseOff;
+                                    int sR = (rawBuf[rOff] | (rawBuf[rOff + 1] << 8) | ((sbyte)rawBuf[rOff + 2] << 16));
+                                    float fl = (float)Math.Tanh((sL / 8388608.0f) * 2.0f);
+                                    float fr = (float)Math.Tanh((sR / 8388608.0f) * 2.0f);
                                     left = (short)(fl * 32760.0f);
                                     right = (short)(fr * 32760.0f);
                                 }
                                 else if (bitsPerSample == 16)
                                 {
-                                    int il = (int)(BitConverter.ToInt16(rawBuf, baseOff) * 2.8f);
-                                    int ir = (int)((srcChannels >= 2 ? BitConverter.ToInt16(rawBuf, baseOff + 2) : BitConverter.ToInt16(rawBuf, baseOff)) * 2.8f);
-                                    if (il > 32767) il = 32767; else if (il < -32768) il = -32768;
-                                    if (ir > 32767) ir = 32767; else if (ir < -32768) ir = -32768;
-                                    left = (short)il;
-                                    right = (short)ir;
+                                    float fl = (float)Math.Tanh((BitConverter.ToInt16(rawBuf, baseOff) / 32768.0f) * 2.0f);
+                                    float fr = (float)Math.Tanh(((srcChannels >= 2 ? BitConverter.ToInt16(rawBuf, baseOff + 2) : BitConverter.ToInt16(rawBuf, baseOff)) / 32768.0f) * 2.0f);
+                                    left = (short)(fl * 32760.0f);
+                                    right = (short)(fr * 32760.0f);
                                 }
                             }
 
@@ -304,7 +330,12 @@ namespace NuvioAudio
                         srcPosFrac -= numFrames;
                         if (srcPosFrac < 0) srcPosFrac = 0;
 
-                        captureClient.GetNextPacketSize(out nextPacketSize);
+                        hr = captureClient.GetNextPacketSize(out nextPacketSize);
+                        if (hr == AUDCLNT_E_DEVICE_INVALIDATED || hr < 0)
+                        {
+                            RestoreMuteState();
+                            return 8;
+                        }
                     }
                 }
             }

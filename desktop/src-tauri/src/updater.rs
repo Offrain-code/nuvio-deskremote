@@ -792,6 +792,7 @@ fn stream_file_with_sha256(
 pub async fn install_downloaded_update(
     app: AppHandle,
     companion: State<'_, crate::CompanionProcess>,
+    ipc_token: State<'_, crate::LocalIpcToken>,
     update: State<'_, UpdateState>,
 ) -> Result<(), String> {
     let (path, expected_sha256) = {
@@ -855,7 +856,12 @@ pub async fn install_downloaded_update(
         launched?;
     }
 
-    // Stop bundled Node.js Companion server only after UAC/installer launch succeeds
+    // Stop bundled Node.js Companion server cleanly only after UAC/installer launch succeeds
+    let shutdown_token = ipc_token.0.clone();
+    let _ = tauri::async_runtime::spawn_blocking(move || {
+        crate::request_graceful_companion_shutdown(&shutdown_token);
+    })
+    .await;
     if let Ok(mut guard) = companion.0.lock() {
         crate::stop_companion_locked(&mut guard);
     }

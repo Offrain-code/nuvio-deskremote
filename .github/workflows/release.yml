@@ -19,7 +19,7 @@ jobs:
           distribution: temurin
           java-version: 21
       - uses: gradle/actions/setup-gradle@v4
-      - name: Decode release keystore (if configured)
+      - name: Decode release keystore (required for tagged releases)
         shell: bash
         env:
           NUVIO_KEYSTORE_B64: ${{ secrets.NUVIO_KEYSTORE_B64 }}
@@ -27,6 +27,9 @@ jobs:
           if [ -n "$NUVIO_KEYSTORE_B64" ]; then
             echo "$NUVIO_KEYSTORE_B64" | base64 --decode > android/release.keystore
             echo "NUVIO_KEYSTORE_PATH=$GITHUB_WORKSPACE/android/release.keystore" >> "$GITHUB_ENV"
+          elif [[ "${GITHUB_REF:-}" == refs/tags/v* ]]; then
+            echo "::error::NUVIO_KEYSTORE_B64 secret is required for tagged releases (refusing debug signing fallback)"
+            exit 1
           fi
       - name: Build Android Release APK
         working-directory: android
@@ -34,7 +37,7 @@ jobs:
           NUVIO_KEYSTORE_PASSWORD: ${{ secrets.NUVIO_KEYSTORE_PASSWORD }}
           NUVIO_KEY_ALIAS: ${{ secrets.NUVIO_KEY_ALIAS }}
           NUVIO_KEY_PASSWORD: ${{ secrets.NUVIO_KEY_PASSWORD }}
-        run: ./gradlew ktlintCheck detekt testDebugUnitTest assembleRelease --no-daemon
+        run: ./gradlew ktlintCheck detekt lintDebug testDebugUnitTest assembleRelease --no-daemon
       - uses: actions/upload-artifact@v4
         with:
           name: nuvio-deskremote-android
@@ -69,9 +72,26 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           path: release-assets
+      - name: Generate SHA256SUMS.txt and stage release metadata
+        shell: bash
+        run: |
+          mkdir -p release-assets/checksums
+          (
+            shopt -s nullglob
+            for f in release-assets/nuvio-deskremote-android/*.apk release-assets/nuvio-deskremote-windows/*.exe; do
+              hash=$(sha256sum "$f" | awk '{print $1}')
+              base=$(basename "$f")
+              printf "%s  %s\n" "$hash" "$base"
+            done
+          ) > release-assets/checksums/SHA256SUMS.txt
+          cat release-assets/checksums/SHA256SUMS.txt
+          if [ -f release-notes.json ]; then
+            cp release-notes.json release-assets/checksums/release-notes.json
+          fi
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v2
         with:
@@ -79,3 +99,4 @@ jobs:
           files: |
             release-assets/nuvio-deskremote-android/*.apk
             release-assets/nuvio-deskremote-windows/*.exe
+            release-assets/checksums/*

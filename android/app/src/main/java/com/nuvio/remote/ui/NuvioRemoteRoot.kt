@@ -246,7 +246,6 @@ fun NuvioRemoteRoot(
                             onSelectMonitor = { monitor ->
                                 activeMonitor = monitor
                                 appPrefs.screenMonitor = monitor
-                                conn.screenStart(defaultProfile, monitor)
                             },
                         )
                         ConnectionErrorBanner(
@@ -283,6 +282,8 @@ fun NuvioRemoteRoot(
                                     activeMonitor = monitor
                                     appPrefs.screenMonitor = monitor
                                 },
+                                curtainActive = curtainActive,
+                                onCurtainChange = { curtainActive = it },
                                 textInputFocusTick = textInputFocusTick,
                                 appLanguage = appLanguage,
                                 onAppLanguageChange = onAppLanguageChange,
@@ -380,6 +381,8 @@ private fun NuvioRouteHost(
     wakeInfo: com.nuvio.remote.connection.NuvioWakeInfo?,
     activeMonitor: Int,
     onMonitorChange: (Int) -> Unit,
+    curtainActive: Boolean,
+    onCurtainChange: (Boolean) -> Unit,
     textInputFocusTick: Long,
     appLanguage: AppLanguage,
     onAppLanguageChange: (AppLanguage) -> Unit,
@@ -423,6 +426,8 @@ private fun NuvioRouteHost(
                 activeMonitor = activeMonitor,
                 onMonitorChange = onMonitorChange,
                 onImmersiveChange = onImmersiveChange,
+                curtainActive = curtainActive,
+                onCurtainChange = onCurtainChange,
             )
             NuvioRoute.Apps -> AppsScreen(
                 subTab = appsSubTab,

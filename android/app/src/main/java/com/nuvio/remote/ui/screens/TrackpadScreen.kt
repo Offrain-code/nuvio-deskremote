@@ -979,6 +979,7 @@ private class TrackpadMotionAccumulator {
     ) {
         session.finishedNormally = true
         if (session.maxPointers >= 2) {
+            event.changes.forEach { it.consume() }
             if (tracker.onCancel()) onGestureDragChange(false)
             if (!session.twoFingerMoved) onTwoFingerTap()
             return

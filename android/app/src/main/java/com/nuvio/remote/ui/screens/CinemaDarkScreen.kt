@@ -136,9 +136,6 @@ fun CinemaDarkScreen(
         )
 
         CinemaGesturePad(
-            nowPlaying = nowPlaying,
-            livePos = livePos,
-            duration = duration,
             fg = fg,
             fgMuted = fgMuted,
             border = border,
@@ -390,9 +387,6 @@ private fun CinemaPlaybackHeader(
 
 @Composable
 private fun CinemaGesturePad(
-    nowPlaying: NuvioNowPlaying?,
-    livePos: Long,
-    duration: Long,
     fg: Color,
     fgMuted: Color,
     border: Color,
@@ -403,6 +397,10 @@ private fun CinemaGesturePad(
     onVerticalStep: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val currentTapPlayPause by androidx.compose.runtime.rememberUpdatedState(onTapPlayPause)
+    val currentLongPressExit by androidx.compose.runtime.rememberUpdatedState(onLongPressExit)
+    val currentHorizontalStep by androidx.compose.runtime.rememberUpdatedState(onHorizontalStep)
+    val currentVerticalStep by androidx.compose.runtime.rememberUpdatedState(onVerticalStep)
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -410,11 +408,11 @@ private fun CinemaGesturePad(
             .border(1.dp, border, RoundedCornerShape(22.dp))
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { onTapPlayPause() },
-                    onLongPress = { onLongPressExit() },
+                    onTap = { currentTapPlayPause() },
+                    onLongPress = { currentLongPressExit() },
                 )
             }
-            .pointerInput(nowPlaying?.isMusic, livePos, duration, nowPlaying?.volume) {
+            .pointerInput(Unit) {
                 var accumX = 0f
                 var accumY = 0f
                 detectDragGestures(
@@ -431,11 +429,11 @@ private fun CinemaGesturePad(
                     accumX += dragAmount.x
                     accumY += dragAmount.y
                     if (abs(accumX) >= GESTURE_THRESHOLD_PX && abs(accumX) > abs(accumY)) {
-                        onHorizontalStep(if (accumX > 0f) 1 else -1)
+                        currentHorizontalStep(if (accumX > 0f) 1 else -1)
                         accumX = 0f
                         accumY = 0f
                     } else if (abs(accumY) >= GESTURE_THRESHOLD_PX && abs(accumY) > abs(accumX)) {
-                        onVerticalStep(if (accumY < 0f) 1 else -1)
+                        currentVerticalStep(if (accumY < 0f) 1 else -1)
                         accumX = 0f
                         accumY = 0f
                     }

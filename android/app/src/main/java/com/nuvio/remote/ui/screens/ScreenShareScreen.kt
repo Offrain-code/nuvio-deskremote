@@ -71,6 +71,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import com.nuvio.remote.connection.ConnState
 import com.nuvio.remote.connection.MouseButtons
 import com.nuvio.remote.connection.NuvioConnection
 import com.nuvio.remote.connection.ScreenProfile
@@ -118,6 +119,8 @@ fun ScreenShareScreen(
     onMonitorChange: (Int) -> Unit,
     onImmersiveChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
+    curtainActive: Boolean = false,
+    onCurtainChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -127,6 +130,7 @@ fun ScreenShareScreen(
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     val connState by conn.connState.collectAsState()
+    val appInForeground by conn.appInForegroundState.collectAsState()
     val isTunnelActive by conn.isTunnelActive.collectAsState()
     val hasScreenFrame by conn.hasScreenFrame.collectAsState()
     val isFrameBottomLight by conn.isFrameBottomLight.collectAsState()
@@ -168,6 +172,7 @@ fun ScreenShareScreen(
         answerSdp = answerSdp,
         defaultProfile = defaultProfile,
         activeMonitor = activeMonitor,
+        isStreamEligible = connState is ConnState.Connected && appInForeground,
         reconnectTick = uiState.reconnectTick,
         clipboardTick = clipboardTick,
         remoteClipboard = remoteClipboard,
@@ -200,10 +205,10 @@ fun ScreenShareScreen(
     val moreCallbacks = buildMorePcCallbacks(
         conn = conn,
         appPrefs = appPrefs,
-        curtainActive = uiState.curtainActive,
+        curtainActive = curtainActive,
         dragHoldActive = uiState.dragHoldActive,
         screenAudioEnabled = screenAudioEnabled,
-        onCurtainChange = { uiState.curtainActive = it },
+        onCurtainChange = onCurtainChange,
         onDragHoldChange = { uiState.dragHoldActive = it },
         onFeedback = { uiState.feedbackMessage = it },
         onPasteToPc = { uiState.pasteClipboardToPc(context, conn) },
@@ -232,7 +237,7 @@ fun ScreenShareScreen(
             showMorePopover = uiState.showMorePopover,
             keyboardVisible = uiState.keyboardVisible,
             textInputFocusTick = textInputFocusTick,
-            moreMenuState = MorePcMenuState(uiState.curtainActive, uiState.dragHoldActive, screenAudioEnabled),
+            moreMenuState = MorePcMenuState(curtainActive, uiState.dragHoldActive, screenAudioEnabled),
             moreCallbacks = moreCallbacks,
             radialCallbacks = radialCallbacks,
             feedbackMessage = uiState.feedbackMessage,
@@ -271,7 +276,7 @@ fun ScreenShareScreen(
             directTouch = uiState.directTouch,
             activeMonitor = activeMonitor,
             screenAudioEnabled = screenAudioEnabled,
-            curtainActive = uiState.curtainActive,
+            curtainActive = curtainActive,
             isBackdropLight = isBackdropLight,
             moreCallbacks = moreCallbacks,
             onSurfaceReady = { surfaceRef.value = it },
@@ -846,7 +851,7 @@ private class ViewportGestureHelper(
         maxTapMovePx = maxTapMovePx,
     )
     private var totalMovedPx = 0f
-    private var suppressNextTap = false
+    private var suppressTapUntilMs = 0L
 
     val isDoubleTapDragArmed: Boolean
         get() = doubleTapDrag.isArmed
@@ -973,24 +978,27 @@ private class ViewportGestureHelper(
 
     fun onSinglePointerUp(pos: Offset, nowMs: Long): Boolean {
         if (!doubleTapDrag.onPointerUp(pos, nowMs)) return false
+        suppressTapUntilMs = nowMs + SUPPRESS_TAP_AFTER_DRAG_MS
         conn.sendMouseHold(MouseButtons.LEFT, false)
         return true
     }
 
     fun cancelGestureDrag(): Boolean {
         if (!doubleTapDrag.onCancel()) return false
+        suppressTapUntilMs = SystemClock.elapsedRealtime() + SUPPRESS_TAP_AFTER_DRAG_MS
         conn.sendMouseHold(MouseButtons.LEFT, false)
         return true
     }
 
     fun consumeSuppressNextTap(): Boolean {
-        if (!suppressNextTap) return false
-        suppressNextTap = false
-        return true
+        val until = suppressTapUntilMs
+        if (until == 0L) return false
+        suppressTapUntilMs = 0L
+        return SystemClock.elapsedRealtime() <= until
     }
 
     private fun engageLeftHoldAtAnchor(directTouch: Boolean, access: ViewportTransformAccess) {
-        suppressNextTap = true
+        suppressTapUntilMs = SystemClock.elapsedRealtime() + SUPPRESS_TAP_AFTER_DRAG_MS
         if (directTouch) {
             val localAnchor = doubleTapDrag.anchorPosition - access.getVideoOrigin()
             val (nx, ny) = mapViewportToNormalized(
@@ -1152,6 +1160,8 @@ private fun readTextFromAndroidClipboard(context: Context): String = runCatching
     item.coerceToText(context)?.toString().orEmpty()
 }.getOrDefault("")
 
+private const val SUPPRESS_TAP_AFTER_DRAG_MS = 250L
+
 private class ScreenShareUiState(initialDirectTouch: Boolean) {
     var directTouch by mutableStateOf(initialDirectTouch)
     var barHidden by mutableStateOf(false)
@@ -1159,7 +1169,6 @@ private class ScreenShareUiState(initialDirectTouch: Boolean) {
     var showQualityPopover by mutableStateOf(false)
     var showMorePopover by mutableStateOf(false)
     var keyboardVisible by mutableStateOf(false)
-    var curtainActive by mutableStateOf(false)
     var dragHoldActive by mutableStateOf(false)
     var reconnectTick by mutableIntStateOf(0)
     var feedbackMessage by mutableStateOf<String?>(null)
@@ -1244,6 +1253,7 @@ private fun ScreenShareStreamSyncEffects(
     answerSdp: String?,
     defaultProfile: ScreenProfile,
     activeMonitor: Int,
+    isStreamEligible: Boolean,
     reconnectTick: Int,
     clipboardTick: Long,
     remoteClipboard: String,
@@ -1252,8 +1262,8 @@ private fun ScreenShareStreamSyncEffects(
     LaunchedEffect(answerSdp) {
         answerSdp?.let { controller.applyAnswer(it) }
     }
-    LaunchedEffect(defaultProfile, activeMonitor, reconnectTick, surface) {
-        if (surface != null) {
+    LaunchedEffect(defaultProfile, activeMonitor, reconnectTick, surface, isStreamEligible) {
+        if (surface != null && isStreamEligible) {
             controller.attachOrStart(context, defaultProfile, surface, activeMonitor, reconnectTick)
         }
     }

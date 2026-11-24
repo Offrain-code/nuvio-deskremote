@@ -107,12 +107,29 @@ class NowPlayingMediaService : Service() {
         }
         val state = NowPlayingMediaBridge.latest
         if (state == null) {
+            startMinimalForeground()
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
             return START_NOT_STICKY
         }
         renderNowPlaying(state)
         return START_NOT_STICKY
+    }
+
+    private fun startMinimalForeground() {
+        val lang = resolveContextLanguage(this)
+        val placeholder = Notification.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(l10n(lang, "Nuvio Playback", "Reprodução no Nuvio"))
+            .setOnlyAlertOnce(true)
+            .build()
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, placeholder, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+            } else {
+                startForeground(NOTIFICATION_ID, placeholder)
+            }
+        }
     }
 
     override fun onDestroy() {
@@ -126,11 +143,15 @@ class NowPlayingMediaService : Service() {
 
     private val sessionCallback = object : MediaSession.Callback() {
         override fun onPlay() {
-            NowPlayingMediaBridge.onPlayPause?.invoke()
+            if (NowPlayingMediaBridge.latest?.isPlaying != true) {
+                NowPlayingMediaBridge.onPlayPause?.invoke()
+            }
         }
 
         override fun onPause() {
-            NowPlayingMediaBridge.onPlayPause?.invoke()
+            if (NowPlayingMediaBridge.latest?.isPlaying != false) {
+                NowPlayingMediaBridge.onPlayPause?.invoke()
+            }
         }
 
         override fun onSkipToNext() {
@@ -168,7 +189,10 @@ class NowPlayingMediaService : Service() {
         }
 
         val url = state.imageUrl
-        if (!url.isNullOrBlank() && url != cachedArtUrl) {
+        if (url.isNullOrBlank()) {
+            cachedArtUrl = null
+            cachedArt = null
+        } else if (url != cachedArtUrl) {
             cachedArtUrl = url
             imageExecutor.execute {
                 val bmp = downloadBitmap(url)
@@ -304,18 +328,30 @@ class NowPlayingMediaService : Service() {
     }
 
     private fun downloadBitmap(url: String): Bitmap? = runCatching {
-        val conn = (URL(url).openConnection() as HttpURLConnection).apply {
+        val parsed = URL(url)
+        if (parsed.protocol != "https" && parsed.protocol != "http") return@runCatching null
+        val conn = (parsed.openConnection() as HttpURLConnection).apply {
             connectTimeout = 3500
             readTimeout = 3500
         }
         try {
-            conn.inputStream.use { BitmapFactory.decodeStream(it) }
+            val rawBytes = conn.inputStream.use { it.readBytes() }
+            if (rawBytes.isEmpty()) return@runCatching null
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, bounds)
+            var sampleSize = 1
+            while (bounds.outWidth / sampleSize > MAX_ART_PX || bounds.outHeight / sampleSize > MAX_ART_PX) {
+                sampleSize *= 2
+            }
+            val opts = BitmapFactory.Options().apply { inSampleSize = sampleSize }
+            BitmapFactory.decodeByteArray(rawBytes, 0, rawBytes.size, opts)
         } finally {
             conn.disconnect()
         }
     }.getOrNull()
 
     companion object {
+        private const val MAX_ART_PX = 512
         private const val CHANNEL_ID = "nuvio_now_playing"
         private const val NOTIFICATION_ID = 4101
         private const val ACTION_PLAY_PAUSE = "com.nuvio.remote.media.PLAY_PAUSE"
@@ -327,18 +363,17 @@ class NowPlayingMediaService : Service() {
 
         fun sync(context: Context, state: NuvioNowPlaying?) {
             NowPlayingMediaBridge.latest = state
+            val intent = Intent(context, NowPlayingMediaService::class.java)
+            if (state == null) {
+                runCatching { context.stopService(intent) }
+                return
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val granted = context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
                     PackageManager.PERMISSION_GRANTED
                 if (!granted) return
             }
-            val intent = Intent(context, NowPlayingMediaService::class.java)
-            if (state == null) {
-                intent.action = ACTION_STOP
-                runCatching { context.startService(intent) }
-            } else {
-                runCatching { context.startForegroundService(intent) }
-            }
+            runCatching { context.startForegroundService(intent) }
         }
     }
 }

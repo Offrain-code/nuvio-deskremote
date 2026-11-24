@@ -91,6 +91,15 @@ class NuvioPhase3ModelsTest {
     }
 
     @Test
+    fun normalizeLiveTvProgress_convertsPermilleToPercent() {
+        assertEquals(0, NuvioPhase3Parser.normalizeLiveTvProgress(-5))
+        assertEquals(42, NuvioPhase3Parser.normalizeLiveTvProgress(42))
+        assertEquals(45, NuvioPhase3Parser.normalizeLiveTvProgress(450))
+        assertEquals(100, NuvioPhase3Parser.normalizeLiveTvProgress(1000))
+        assertEquals(100, NuvioPhase3Parser.normalizeLiveTvProgress(1500))
+    }
+
+    @Test
     fun parseTonight_promptAnswersAndCards() {
         val obj = JSONObject().apply {
             put("view", "quiz")

@@ -13,6 +13,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -347,6 +348,24 @@ class NuvioConnection(
         }
     }
 
+    private fun handlePcmAudioPacket(bytes: ByteString) {
+        if (!_screenAudioEnabled.value) return
+        val pcm = bytes.toByteArray()
+        val track = ensureAudioTrack() ?: return
+        val written = synchronized(audioLock) {
+            if (audioTrack === track) {
+                runCatching {
+                    track.write(pcm, 4, pcm.size - 4, AudioTrack.WRITE_NON_BLOCKING)
+                }.getOrDefault(AudioTrack.ERROR_DEAD_OBJECT)
+            } else {
+                0
+            }
+        }
+        if (written == AudioTrack.ERROR_DEAD_OBJECT) {
+            stopAudioTrack()
+        }
+    }
+
     private fun stopAudioTrack() {
         synchronized(audioLock) {
             runCatching {
@@ -508,15 +527,7 @@ class NuvioConnection(
                 val type = bytes[0].toInt() and 0xFF
                 // Packet 0x06: Windows PCM audio (24kHz Stereo s16le): [0]=6, [1]=1, [2..3]=samples, [4..]=PCM
                 if (type == 6 && size > 4) {
-                    if (_screenAudioEnabled.value) {
-                        val pcm = bytes.toByteArray()
-                        val track = ensureAudioTrack()
-                        if (track != null) {
-                            runCatching {
-                                track.write(pcm, 4, pcm.size - 4, AudioTrack.WRITE_NON_BLOCKING)
-                            }
-                        }
-                    }
+                    handlePcmAudioPacket(bytes)
                     return
                 }
                 // Packet 0x05: server detected a click inside a text input (I-Beam cursor) -> open soft keyboard
@@ -732,9 +743,23 @@ class NuvioConnection(
         runCatching { udpSocket?.close() }
         udpSocket = null
         udpAddress = null
+        latestFramePacket = null
+        frameRing.fill(null)
+        lastScreenStartKey = ""
         publishScreenFrame(null)
         bridge.resetOnDisconnect()
         _connState.value = ConnState.Disconnected
+    }
+
+    /** Releases all background threads, coroutines, and OkHttp pools when MainActivity is destroyed. */
+    fun shutdown() {
+        disconnect()
+        pointerWorkerThread?.interrupt()
+        pointerWorkerThread = null
+        pointerWorkerStarted.set(false)
+        scope.cancel()
+        runCatching { client.dispatcher.executorService.shutdown() }
+        runCatching { client.connectionPool.evictAll() }
     }
 
     private fun publishScreenFrame(bmp: Bitmap?) {
@@ -773,9 +798,12 @@ class NuvioConnection(
     private val pointerSignal = Semaphore(0)
     private val pointerWorkerStarted = AtomicBoolean(false)
 
+    @Volatile
+    private var pointerWorkerThread: Thread? = null
+
     private fun ensurePointerWorkerStarted() {
         if (!pointerWorkerStarted.compareAndSet(false, true)) return
-        Thread(
+        val thread = Thread(
             {
                 val relBuf = ByteArray(5).apply { this[0] = 0x02 }
                 val absBuf = ByteArray(6).apply { this[0] = 0x03 }
@@ -788,7 +816,9 @@ class NuvioConnection(
                 }
             },
             "nuvio-pointer-sender",
-        ).apply { isDaemon = true }.start()
+        ).apply { isDaemon = true }
+        pointerWorkerThread = thread
+        thread.start()
     }
 
     private fun drainPendingPointers(

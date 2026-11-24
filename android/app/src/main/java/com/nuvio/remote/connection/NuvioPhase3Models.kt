@@ -194,7 +194,7 @@ object NuvioPhase3Parser {
                         sub = optCleanString(item, "sub"),
                         picture = optCleanString(item, "picture"),
                         live = item.optBoolean("live", false),
-                        progress = item.optInt("progress", 0).coerceIn(0, 100),
+                        progress = normalizeLiveTvProgress(item.optInt("progress", 0)),
                         action = item.optString("action", ""),
                     ),
                 )
@@ -202,6 +202,10 @@ object NuvioPhase3Parser {
         }
         return out
     }
+
+    /** Normalizes bridge Live TV progress (0..1000 permille or legacy 0..100 percent) into 0..100. */
+    internal fun normalizeLiveTvProgress(raw: Int): Int =
+        if (raw > 100) (raw / 10).coerceIn(0, 100) else raw.coerceIn(0, 100)
 
     private fun parseLiveTvButtons(arr: JSONArray?): List<NuvioLiveTvButton> {
         if (arr == null) return emptyList()

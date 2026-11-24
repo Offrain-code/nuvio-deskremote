@@ -168,7 +168,7 @@ fun NuvioGlassSwitch(
     }
 }
 
-/** Native tactile slider without Material 3, with >= 48dp vertical hitbox. */
+/** Native tactile slider without Material 3, with >= 48dp vertical hitbox and theme-aware contrast. */
 @Composable
 fun NuvioGlassSlider(
     value: Float,
@@ -176,11 +176,15 @@ fun NuvioGlassSlider(
     modifier: Modifier = Modifier,
     valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
     steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null,
 ) {
     val context = LocalContext.current
     val hapticsEnabled = LocalHapticsEnabled.current
     val scheme = LocalNuvioColors.current
     val density = LocalDensity.current
+    val currentOnValueChange by androidx.compose.runtime.rememberUpdatedState(onValueChange)
+    val currentOnValueChangeFinished by androidx.compose.runtime.rememberUpdatedState(onValueChangeFinished)
+    val currentHaptics by androidx.compose.runtime.rememberUpdatedState(hapticsEnabled)
 
     val span = (valueRange.endInclusive - valueRange.start).coerceAtLeast(0.0001f)
     val fraction = ((value - valueRange.start) / span).coerceIn(0f, 1f)
@@ -204,22 +208,27 @@ fun NuvioGlassSlider(
                 progressBarRangeInfo = ProgressBarRangeInfo(value, valueRange, steps)
                 setProgress { targetValue ->
                     val clamped = targetValue.coerceIn(valueRange.start, valueRange.endInclusive)
-                    onValueChange(clamped)
+                    currentOnValueChange(clamped)
+                    currentOnValueChangeFinished?.invoke()
                     true
                 }
             }
             .pointerInput(valueRange, steps) {
                 detectTapGestures { offset ->
                     val next = mapOffsetToValue(offset.x, size.width.toFloat())
-                    if (hapticsEnabled) Haptics.action(context)
-                    onValueChange(next)
+                    if (currentHaptics) Haptics.action(context)
+                    currentOnValueChange(next)
+                    currentOnValueChangeFinished?.invoke()
                 }
             }
             .pointerInput(valueRange, steps) {
-                detectHorizontalDragGestures { change, _ ->
+                detectHorizontalDragGestures(
+                    onDragEnd = { currentOnValueChangeFinished?.invoke() },
+                    onDragCancel = { currentOnValueChangeFinished?.invoke() },
+                ) { change, _ ->
                     change.consume()
                     val next = mapOffsetToValue(change.position.x, size.width.toFloat())
-                    onValueChange(next)
+                    currentOnValueChange(next)
                 }
             },
         contentAlignment = Alignment.CenterStart,
@@ -227,6 +236,7 @@ fun NuvioGlassSlider(
         val thumbSize = 20.dp
         val maxOffsetPx = with(density) { (maxWidth - thumbSize).coerceAtLeast(0.dp).toPx() }
         val thumbOffsetDp = with(density) { (maxOffsetPx * fraction).toDp() }
+        val activeColor = scheme.textPrimary
 
         Box(
             modifier = Modifier
@@ -241,7 +251,7 @@ fun NuvioGlassSlider(
                     .fillMaxWidth(fraction.coerceAtLeast(0.02f))
                     .height(5.dp)
                     .clip(RoundedCornerShape(999.dp))
-                    .background(Color.White),
+                    .background(activeColor),
             )
         }
         Box(
@@ -249,7 +259,7 @@ fun NuvioGlassSlider(
                 .offset(x = thumbOffsetDp)
                 .size(thumbSize)
                 .clip(CircleShape)
-                .background(Color.White)
+                .background(activeColor)
                 .border(1.5.dp, scheme.contentBorder, CircleShape),
         )
     }

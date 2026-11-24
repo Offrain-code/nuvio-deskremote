@@ -29,8 +29,7 @@ jobs:
         run: |
           npm ci
           npm run build
-          node --test test/nuvio-bridge.test.js
-          node --test test/webrtc-h264.test.js
+          node --test test/nuvio-bridge.test.js test/webrtc-h264.test.js test/security.test.js test/win32-and-screen.test.js
 
   android-gate:
     runs-on: ubuntu-latest
@@ -59,7 +58,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Continue'
           $PSNativeCommandUseErrorActionPreference = $false
-          $output = & cargo check --color never --message-format=short 2>&1 | ForEach-Object { "$_" }
+          $output = & cargo test --lib --color never 2>&1 | ForEach-Object { "$_" }
           $code = $LASTEXITCODE
           $output | ForEach-Object { Write-Host $_ }
           if ($code -ne 0) {

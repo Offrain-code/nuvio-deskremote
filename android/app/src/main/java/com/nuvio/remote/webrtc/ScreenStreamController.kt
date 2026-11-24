@@ -24,6 +24,7 @@ import org.webrtc.VideoFrame
 import org.webrtc.VideoSink
 import org.webrtc.VideoTrack
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * WebRTC flow for the Screen tab (SPEC section 5):
@@ -35,6 +36,7 @@ class ScreenStreamController(private val conn: NuvioConnection) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val rendererLock = Any()
     private val firstFrameNotified = AtomicBoolean(false)
+    private val sessionGen = AtomicInteger(0)
     private var factory: PeerConnectionFactory? = null
     private var pc: PeerConnection? = null
     private var egl: EglBase? = null
@@ -114,9 +116,16 @@ class ScreenStreamController(private val conn: NuvioConnection) {
         start(context, profile, surface, monitorIndex)
     }
 
+    private fun disposePeerConnection(target: PeerConnection?) {
+        if (target == null) return
+        runCatching { target.close() }
+        runCatching { target.dispose() }
+    }
+
     /** Called when entering the Screen tab or switching streaming quality profile. */
     fun start(context: Context, profile: ScreenProfile, surface: SurfaceViewRenderer, monitorIndex: Int = 1) {
         initialize(context)
+        val myGen = sessionGen.incrementAndGet()
         activeProfile = profile
         activeMonitor = monitorIndex
         firstFrameNotified.set(false)
@@ -124,8 +133,9 @@ class ScreenStreamController(private val conn: NuvioConnection) {
 
         videoTrack?.let { t -> runCatching { t.removeSink(frameForwardingSink) } }
         videoTrack = null
-        runCatching { pc?.close() }
+        val oldPc = pc
         pc = null
+        disposePeerConnection(oldPc)
         conn.clearAnswerSdp()
 
         synchronized(rendererLock) {
@@ -136,25 +146,27 @@ class ScreenStreamController(private val conn: NuvioConnection) {
         val rtcConfig = PeerConnection.RTCConfiguration(emptyList()).apply {
             sdpSemantics = PeerConnection.SdpSemantics.UNIFIED_PLAN
         }
-        pc = factory?.createPeerConnection(rtcConfig, PeerObserver()) ?: run {
+        val createdPc = factory?.createPeerConnection(rtcConfig, PeerObserver(myGen)) ?: run {
             status.value = "closed"
             return
         }
+        pc = createdPc
         val init = RtpTransceiver.RtpTransceiverInit(
             RtpTransceiver.RtpTransceiverDirection.RECV_ONLY,
         )
-        pc!!.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, init)
+        createdPc.addTransceiver(MediaStreamTrack.MediaType.MEDIA_TYPE_VIDEO, init)
 
         status.value = "offering"
-        pc!!.createOffer(
+        createdPc.createOffer(
             object : SdpObserver {
                 override fun onCreateSuccess(desc: SessionDescription) {
-                    pc?.setLocalDescription(NoopSdp, desc)
+                    if (sessionGen.get() != myGen) return
+                    createdPc.setLocalDescription(NoopSdp, desc)
                     conn.screenStart(profile, monitorIndex, desc.description)
                     status.value = "waiting_answer"
                 }
                 override fun onCreateFailure(error: String) {
-                    status.value = "closed"
+                    if (sessionGen.get() == myGen) status.value = "closed"
                 }
                 override fun onSetSuccess() = Unit
                 override fun onSetFailure(error: String) = Unit
@@ -171,6 +183,7 @@ class ScreenStreamController(private val conn: NuvioConnection) {
     }
 
     fun stop() {
+        sessionGen.incrementAndGet()
         val wasFirstFrame = firstFrameNotified.getAndSet(false)
         hasFirstFrame.value = false
         activeProfile = null
@@ -186,8 +199,9 @@ class ScreenStreamController(private val conn: NuvioConnection) {
             initializedRenderers.remove(r)
             runCatching { r.release() }
         }
-        runCatching { pc?.close() }
+        val oldPc = pc
         pc = null
+        disposePeerConnection(oldPc)
         conn.clearAnswerSdp()
         if (wasFirstFrame) {
             conn.sendWebRtcLive(false)
@@ -211,22 +225,22 @@ class ScreenStreamController(private val conn: NuvioConnection) {
     }
 
     fun detachRenderer(surface: SurfaceViewRenderer) {
-        val wasCurrent = synchronized(rendererLock) {
-            val match = renderer === surface
-            if (match) renderer = null
-            match
+        synchronized(rendererLock) {
+            if (renderer === surface) renderer = null
         }
-        if (wasCurrent && initializedRenderers.remove(surface)) {
+        if (initializedRenderers.remove(surface)) {
             runCatching { surface.release() }
         }
     }
 
-    private inner class PeerObserver : PeerConnection.Observer {
+    private inner class PeerObserver(private val myGen: Int) : PeerConnection.Observer {
         override fun onIceCandidate(candidate: IceCandidate) {
+            if (sessionGen.get() != myGen) return
             conn.sendIceCandidate(candidate.sdp, candidate.sdpMid ?: "0")
         }
         override fun onIceCandidatesRemoved(candidates: Array<out IceCandidate>) = Unit
         override fun onConnectionChange(newState: PeerConnection.PeerConnectionState) {
+            if (sessionGen.get() != myGen) return
             when (newState) {
                 PeerConnection.PeerConnectionState.CONNECTED -> status.value = "live"
                 PeerConnection.PeerConnectionState.DISCONNECTED,
@@ -243,10 +257,12 @@ class ScreenStreamController(private val conn: NuvioConnection) {
             }
         }
         override fun onTrack(transceiver: RtpTransceiver) {
+            if (sessionGen.get() != myGen) return
             val track = transceiver.receiver.track()
             if (track is VideoTrack) {
                 videoTrack = track
                 mainHandler.post {
+                    if (sessionGen.get() != myGen) return@post
                     synchronized(rendererLock) { renderer }?.let { surf ->
                         initSurfaceOnce(surf)
                     }

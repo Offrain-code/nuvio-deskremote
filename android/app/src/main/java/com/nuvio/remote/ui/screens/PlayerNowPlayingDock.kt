@@ -183,7 +183,7 @@ private fun NowPlayingMiniCard(nowPlaying: NuvioNowPlaying, nowMs: Long, onSeekT
     val art = rememberRemoteBitmap(nowPlaying.imageUrl)
     val livePos = nowPlaying.positionAt(nowMs)
     val duration = nowPlaying.durationMs
-    var scrubbingFrac by remember(nowPlaying.title, nowPlaying.receivedAtMs) { mutableStateOf<Float?>(null) }
+    var scrubbingFrac by remember(nowPlaying.title) { mutableStateOf<Float?>(null) }
 
     val displayPos = if (scrubbingFrac != null && duration > 0L) {
         (scrubbingFrac!! * duration).toLong()
@@ -288,7 +288,13 @@ private fun NowPlayingMiniCard(nowPlaying: NuvioNowPlaying, nowMs: Long, onSeekT
                     value = sliderFrac,
                     onValueChange = { frac ->
                         scrubbingFrac = frac
-                        onSeekTo((frac * duration).toLong())
+                    },
+                    onValueChangeFinished = {
+                        val finalFrac = scrubbingFrac
+                        scrubbingFrac = null
+                        if (finalFrac != null && duration > 0L) {
+                            onSeekTo((finalFrac * duration).toLong())
+                        }
                     },
                     modifier = Modifier.weight(1f),
                 )

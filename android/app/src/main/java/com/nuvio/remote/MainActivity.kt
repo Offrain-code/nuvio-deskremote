@@ -1,5 +1,8 @@
 package com.nuvio.remote
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
@@ -58,6 +61,7 @@ class MainActivity : ComponentActivity() {
         )
         super.onCreate(savedInstanceState)
         initializeServices()
+        requestNotificationPermissionIfNeeded()
 
         setContent {
             val initialTab = remember {
@@ -261,6 +265,16 @@ class MainActivity : ComponentActivity() {
         super.onStop()
     }
 
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            runCatching {
+                requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), REQ_POST_NOTIFICATIONS)
+            }
+        }
+    }
+
     override fun onDestroy() {
         NowPlayingMediaBridge.onPlayPause = null
         NowPlayingMediaBridge.onSeekTo = null
@@ -272,13 +286,14 @@ class MainActivity : ComponentActivity() {
         scope.cancel()
         if (::wifiLatencyLock.isInitialized) wifiLatencyLock.release()
         if (::controller.isInitialized) controller.release()
-        if (::conn.isInitialized) conn.disconnect()
+        if (::conn.isInitialized) conn.shutdown()
         super.onDestroy()
     }
 
     companion object {
         private const val DEFAULT_HOST = ""
         private const val DEFAULT_PORT = 8787
+        private const val REQ_POST_NOTIFICATIONS = 1001
 
         /**
          * Prevents zero-click session token theft via spoofed UDP discovery replies on foreign Wi-Fi.

@@ -2,6 +2,16 @@
 
 All notable changes to **Nuvio DeskRemote** (Android app + Windows Companion) are documented in this file.
 
+## [0.5.5] - 2026-11-26
+
+### Added
+- **Remote Swipe Pad (`[ D-Pad | Swipe ]` — Nuvio Mode):** Added a persistent mode switcher centered above the Remote cockpit to toggle between the classic D-Pad ring and a Liquid Glass gesture squircle (`PrecisionSwipePad`: swipe for arrows, single tap for `OK`, long press for `Back`).
+- **Persistent Opaque Mini-Player on `Apps` (Nuvio Mode):** Added `AppsPersistentMiniPlayer` (100% opaque `ContentCardSurface`, zero glass) docked above the bottom bar whenever media is playing, with thumbnail, progress bar, `Play/Pause`, and tap-to-open Player.
+- **Android Home Screen Widgets (`4x1` & `4x2`) and App Shortcuts:** Added `NuvioCompactWidgetProvider` (`4x1`: Wake-on-LAN when offline; `Play/Pause`, `Vol -/+`, `Mute` when online) and `NuvioExpandedWidgetProvider` (`4x2`: Now Playing progress + transport/volume/WoL), plus launcher App Shortcuts to jump directly to `Trackpad`, `Screen`, or `Apps`.
+- **PC Power Control Sheet (PC Mode Only):** Added `PcPowerDialog` (Liquid Glass `REGULAR` shell with 2x2 opaque grid) accessible from `Trackpad` and `Screen > More PC`, supporting instant `Lock Windows` (`rundll32.exe`) and `Turn off monitor`, plus mandatory 2nd-tap confirmation for `Sleep`, `Restart`, and `Shut down`.
+- **Trackpad Multitouch Gestures & Left-Handed Mode (PC Mode):** Added 2-finger pinch-to-zoom (`Ctrl + Scroll` via `mouse.zoom`), 3-finger window gestures (up = `Win+Tab`, down = `Win+D`, left/right = `Alt+Tab`), and a `Left-handed scroll rail` toggle inside the cursor speed card.
+- **Expanded PC Keyboard Shortcuts & Theme Override:** Added a `More` / `Less` toggle in `RemoteTextInputBar` exposing two fixed rows of PC shortcuts (`Win+D`, `Win+Tab`, `Ctrl+Z`, `Ctrl+W`, `F5`, `Ctrl+Shift+Esc`, `Alt+F4`) and an explicit `Appearance: System | Dark | Light` selector in `Settings`.
+
 ## [0.5.4] - 2026-11-24
 
 ### Security

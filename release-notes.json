@@ -1,16 +1,16 @@
 {
   "en": [
-    "Hardened DNS rebinding checks (strict IPv6 validation) and added Host, Origin, and unauthenticated socket-cap checks on WebSocket upgrades.",
-    "Made local Companion IPC routes (/api/v1/local/*) fail closed without X-Nuvio-Local-Token and blocked UNC paths in Nuvio.exe config.",
-    "Removed legacy ?auth= WebSocket query-string token fallback and dead Android pairedToken welcome acceptance.",
-    "Restricted Windows NSIS firewall rules to Private networks and explicit Companion ports (8787, 8765, 8766, 8768, WebRTC 60000-60100).",
-    "Moved Windows auto-updater installer staging from %TEMP% to %LOCALAPPDATA%\\NuvioDeskRemote\\updates with pre-UAC SHA-256 re-verification."
+    "Added Remote Swipe Pad ([ D-Pad | Swipe ]) gesture navigation mode alongside the classic D-Pad in Nuvio Mode.",
+    "Added a 100% opaque persistent Mini-Player bar above the bottom dock on the Apps tab when media is playing.",
+    "Added Android Home Screen widgets (4x1 quick controls / WoL and 4x2 Now Playing) plus direct App Shortcuts (Trackpad, Screen, Apps).",
+    "Added PC Power Control sheet in PC Mode (Lock, Monitor off, and 2nd-tap confirmed Sleep, Restart, Shut down).",
+    "Added Trackpad pinch-to-zoom, 3-finger window gestures, left-handed scroll rail, expanded PC keyboard shortcuts, and System/Dark/Light theme selector."
   ],
   "pt-BR": [
-    "Proteção reforçada contra DNS rebinding (validação estrita de IPv6) e validação de Host, Origin e limite de sockets não autenticados no WebSocket.",
-    "Rotas locais do Companion (/api/v1/local/*) agora bloqueiam por padrão sem X-Nuvio-Local-Token e caminhos UNC foram bloqueados na configuração do Nuvio.exe.",
-    "Removido o fallback legado ?auth= na URL do WebSocket e a aceitação legada de pairedToken no Android.",
-    "Regras de Firewall do instalador Windows restritas a Redes Privadas e portas explícitas do Companion (8787, 8765, 8766, 8768 e WebRTC 60000-60100).",
-    "Download do auto-updater no Windows movido de %TEMP% para %LOCALAPPDATA%\\NuvioDeskRemote\\updates com revalidação SHA-256 antes do UAC."
+    "Novo modo Gestos ([ D-Pad | Gestos ]) no Remote com Swipe Pad em Liquid Glass (deslizar = setas, 1 toque = OK, segurar = Voltar).",
+    "Novo Mini-Player persistente 100% opaco na aba Apps com capa, progresso, Play/Pause e atalho direto para o Player.",
+    "Novos Widgets da tela inicial do Android (4x1 controle rápido / WoL e 4x2 Tocando Agora) e App Shortcuts ao segurar o ícone do app.",
+    "Nova folha Energia do PC no Modo PC (Bloquear, Apagar monitor e confirmação em 2º toque para Suspender, Reiniciar e Desligar).",
+    "Novos gestos no Trackpad (pinça zoom e 3 dedos para janelas), trilha de rolagem à esquerda (canhotos), atalhos extras no teclado e seletor de tema Sistema/Escuro/Claro."
   ]
 }

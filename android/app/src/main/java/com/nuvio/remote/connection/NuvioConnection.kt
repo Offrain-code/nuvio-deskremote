@@ -946,6 +946,7 @@ class NuvioConnection(
     fun sendMouseHold(button: MouseButtons, down: Boolean) =
         send("mouse") { put(if (down) "down" else "up", button.name.lowercase()) }
     fun sendMouseScroll(delta: Int) = send("mouse") { put("scroll", delta) }
+    fun sendMouseZoom(delta: Int) = send("mouse") { put("zoom", delta) }
     fun sendSetState(screen: NuvioScreenState) = send("state") { put("screen", screen.name.lowercase()) }
     fun ping() {
         val ts = System.currentTimeMillis()

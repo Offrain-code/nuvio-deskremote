@@ -1388,7 +1388,12 @@ export class CompanionServer {
           if (!o.ok) this.reply(socket, { type: 'error', code: o.code, message: o.message });
           return;
         }
-        this.reply(socket, { type: 'error', code: 'MOUSE_EMPTY', message: 'mouse payload missing move/abs/click/down/up/scroll' });
+        if (typeof m.zoom === 'number') {
+          const o = await this.injector.zoom(Math.max(-10, Math.min(10, m.zoom)));
+          if (!o.ok) this.reply(socket, { type: 'error', code: o.code, message: o.message });
+          return;
+        }
+        this.reply(socket, { type: 'error', code: 'MOUSE_EMPTY', message: 'mouse payload missing move/abs/click/down/up/scroll/zoom' });
         return;
       }
       case 'state': {

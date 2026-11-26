@@ -2982,6 +2982,11 @@
     </div>
 
     <div class="scenario-strip" id="scenarioStrip">
+      <button class="scen-btn" data-scen="v054-power-shortcuts" onclick="goScenario('v054-power-shortcuts')">v0.5.4 F1 • Energia PC &amp; Atalhos (Mais ▾) <span class="scen-tag">Fase 1</span></button>
+      <button class="scen-btn" data-scen="v054-canhoto-tema" onclick="goScenario('v054-canhoto-tema')">v0.5.4 F1 • Trackpad Canhoto &amp; Tema <span class="scen-tag">Fase 1</span></button>
+      <button class="scen-btn" data-scen="v054-swipe-pad" onclick="goScenario('v054-swipe-pad')">v0.5.4 F2 • Remote D-Pad | Swipe Pad <span class="scen-tag">Fase 2</span></button>
+      <button class="scen-btn" data-scen="v054-apps-miniplayer" onclick="goScenario('v054-apps-miniplayer')">v0.5.4 F2 • Apps + Mini-Player Opaco <span class="scen-tag">Fase 2</span></button>
+      <button class="scen-btn" data-scen="v054-widgets" onclick="goScenario('v054-widgets')">v0.5.4 F2 • Widgets Android 4×1 / 4×2 <span class="scen-tag">Fase 2</span></button>
       <button class="scen-btn" data-scen="update-android" onclick="goScenario('update-android')">00. Android • Popup Atualização (GitHub) <span class="scen-tag">Update</span></button>
       <button class="scen-btn" data-scen="update-android-states" onclick="goScenario('update-android-states')">00b. Android • Progresso &amp; Erro Update <span class="scen-tag">Update</span></button>
       <button class="scen-btn" data-scen="update-desktop" onclick="goScenario('update-desktop')">00c. Companion Windows • Popup Update <span class="scen-tag">Update</span></button>
@@ -3173,6 +3178,31 @@ const state = {
 };
 
 const SCENARIO_META = {
+  'v054-power-shortcuts': {
+    title: 'v0.5.4 Fase 1 — Folha Flutuante "Energia do PC" (Confirmação 2º Toque) & Expansão de Atalhos (Mais ▾)',
+    sub: 'Modo PC exclusivo: container externo em GlassVariant.REGULAR, células opacas ContentCellSurface (Bloquear, Suspender, Reiniciar, Desligar com confirmação) + RemoteTextInputBar com 2 sub-linhas de atalhos ≥ 48dp.',
+    tab: 'trackpad', seg: -1
+  },
+  'v054-canhoto-tema': {
+    title: 'v0.5.4 Fase 1 — Trackpad em Modo Canhoto (Trilha à Esquerda) & Seletor de Tema (Sistema | Escuro | Claro)',
+    sub: 'Trilha de rolagem 48dp posicionada à esquerda no Trackpad para ergonomia canhota + seletor concêntrico de 3 temas em Ajustes (≥ 48dp, zero vidro aninhado).',
+    tab: 'trackpad', seg: -1
+  },
+  'v054-swipe-pad': {
+    title: 'v0.5.4 Fase 2 — Aba Remote com Alternador [ D-Pad | Gestos ] (PrecisionSwipePad • Modo Nuvio)',
+    sub: 'Superfície tátil gestual em GlassVariant.REGULAR (Deslizar = Setas, Toque = OK, Segurar = Voltar) mantendo rockers VOL/CH, satélites e DynamicContextDock intactos.',
+    tab: 'remote', seg: 0
+  },
+  'v054-apps-miniplayer': {
+    title: 'v0.5.4 Fase 2 — Aba Apps com Mini-Player Persistente 100% Opaco (Zero Vidro • Modo Nuvio)',
+    sub: 'Barra compacta 100% opaca (ContentCardSurface) acima do dock inferior quando nowPlaying != null: miniatura, título, progresso 3dp, Play/Pause (≥ 48dp) e toque para abrir Remote › Player.',
+    tab: 'apps', seg: -1
+  },
+  'v054-widgets': {
+    title: 'v0.5.4 Fase 2 — Widgets da Tela Inicial do Android (4×1 Offline WoL, 4×1 Online e 4×2 Expandido)',
+    sub: 'Controles rápidos na Home Screen do Android com superfícies opacas Nuvio de alto contraste e alvos ≥ 48dp: Acordar PC (WoL) quando offline; Play/Pause, Vol −/+, Mudo e Now Playing quando online.',
+    tab: 'remote', seg: 0
+  },
   'update-android': {
     title: 'Android — Popup de Atualização Automática (Liquid Glass REGULAR • GitHub Releases)',
     sub: 'Modal flutuante sobre scrim escuro translúcido (v0.4.3 → v0.5.0), bloco interno opaco de novidades (zero vidro sobre vidro) e botões Mais tarde / Atualizar agora (≥ 48dp).',
@@ -5861,6 +5891,489 @@ function renderIconesWindow() {
   `;
 }
 
+function renderV054PowerAndShortcuts() {
+  const powerActions = [
+    { id: 'lock', title: 'Bloquear / Lock', sub: 'Win+L • Imediato (1 toque)', tag: '1 toque', icon: 'focus', armed: false, danger: false },
+    { id: 'sleep', title: 'Suspender / Sleep', sub: 'Exige 2º toque p/ confirmar', tag: '2º toque', icon: 'moon', armed: false, danger: false },
+    { id: 'restart', title: 'Reiniciar / Restart', sub: 'Ação destrutiva • 2º toque', tag: '2º toque', icon: 'restart', armed: false, danger: true },
+    { id: 'shutdown', title: 'Desligar / Shut down', sub: 'Selecionado • Confirme abaixo', tag: 'Confirmar?', icon: 'powerDisplay', armed: true, danger: true }
+  ];
+
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;">
+      <!-- FASE 1A: Folha Flutuante "Energia do PC" (GlassVariant.REGULAR + Células Opacas ContentCellSurface) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Energia do PC" style="border-radius:22px;padding:10px 11px;display:flex;flex-direction:column;gap:5px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;">
+          <div style="min-width:0;">
+            <div style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">FASE 1A • MODO PC (TRACKPAD &amp; MAIS PC)</div>
+            <div style="font-size:12.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">Energia do PC • PC Power</div>
+            <div style="font-size:9.5px;color:var(--text-2);white-space:nowrap;">Ações destrutivas exigem 2º toque de confirmação</div>
+          </div>
+          <button class="float-close-btn" aria-label="Fechar Energia do PC" onclick="goScenario('trackpad')">
+            <span class="float-close-vis content-cell">${ico('close', 14)}</span>
+          </button>
+        </div>
+
+        <!-- Grade 2x2 de Células 100% Opacas (ContentCellSurface — ZERO vidro aninhado) -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;">
+          ${powerActions.map(a => `
+            <button class="content-cell" style="min-height:50px;padding:5px 8px;border-radius:13px;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:2px;cursor:pointer;font-family:var(--font-ui);${a.armed ? 'border:1.5px solid var(--status-err);' : ''}">
+              <div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:4px;">
+                <span style="font-size:10.5px;font-weight:700;color:${a.armed ? 'var(--status-err)' : 'var(--text-1)'};display:inline-flex;align-items:center;gap:4px;white-space:nowrap;">
+                  ${ico(a.icon, 13)} ${a.title.split(' / ')[0]}
+                </span>
+                <span class="s-badge" style="font-size:8.5px;padding:1px 5px;${a.armed ? 'color:var(--status-err);border-color:rgba(248,113,113,0.45);' : ''}">${a.tag}</span>
+              </div>
+              <div style="font-size:9px;color:var(--text-2);white-space:nowrap;">${a.sub}</div>
+            </button>
+          `).join('')}
+        </div>
+
+        <!-- Passo de Confirmação Obrigatória para Ação Destrutiva Armada (Desligar PC) -->
+        <div class="content-card" style="padding:5px 8px;border-radius:13px;border-color:rgba(248,113,113,0.42);display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;font-size:9.5px;">
+            <span style="font-weight:700;color:var(--status-err);">Confirmar desligamento do Windows?</span>
+            <span style="color:var(--text-3);font-weight:600;">EN: Confirm Shut down?</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1.25fr;gap:6px;height:48px;align-items:center;">
+            <button class="action-btn-48" onclick="goScenario('trackpad')">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;font-size:10.5px;font-weight:700;">Cancelar / Cancel</span>
+            </button>
+            <button class="action-btn-48" onclick="goScenario('trackpad')">
+              <span class="vis-pill" style="width:100%;height:34px;font-size:10.5px;font-weight:700;background:rgba(248,113,113,0.18);border:1.5px solid var(--status-err);color:var(--status-err);">Desligar agora (2º toque)</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- FASE 1B: RemoteTextInputBar com Chip "Menos ▴ / Mais ▾" e 2 Sub-linhas de Atalhos (>= 48dp em 360dp) -->
+      <section class="glass-regular elevated" aria-label="Teclado Remoto com Atalhos Expandidos" style="border-radius:20px;padding:6px;display:flex;flex-direction:column;gap:2px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:0 4px 2px;">
+          <span style="font-size:8.8px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">FASE 1B • REMOTETEXTINPUTBAR (CHIP MAIS ▾ EXPANDIDO • ≥ 48DP)</span>
+          <span style="font-size:8.8px;font-weight:700;color:var(--status-on);">Zero truncamento em 360dp</span>
+        </div>
+
+        <!-- Linha 1: 6 teclas padrão (>= 48x48px) -->
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;height:48px;align-items:center;">
+          ${['ESC', 'TAB', 'ALT+TAB', 'WIN', 'CTRL+C', 'CTRL+V'].map(k => `
+            <button class="action-btn-48"><span class="vis-pill content-cell" style="height:32px;border-radius:10px;padding:0 2px;font-size:9.8px;font-weight:700;">${k}</span></button>
+          `).join('')}
+        </div>
+
+        <!-- Linha 2: 5 teclas + Chip "Menos ▴" (Mais ▾) ativo (>= 48x48px) -->
+        <div style="display:grid;grid-template-columns:repeat(6,1fr);gap:4px;height:48px;align-items:center;">
+          ${['Del', '▲', '▼', 'Espaço', 'Enter'].map(k => `
+            <button class="action-btn-48"><span class="vis-pill content-cell" style="height:32px;border-radius:10px;padding:0 2px;font-size:9.8px;font-weight:700;">${k}</span></button>
+          `).join('')}
+          <button class="action-btn-48" aria-label="Recolher mais atalhos">
+            <span class="vis-pill primary" style="height:32px;border-radius:10px;padding:0 2px;font-size:9.8px;font-weight:700;">Menos ▴</span>
+          </button>
+        </div>
+
+        <!-- Sub-linha 3A Expandida: 4 atalhos do servidor (Win+D, Win+Tab, Ctrl+Z, Ctrl+W) -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;height:48px;align-items:center;">
+          ${['Win+D', 'Win+Tab', 'Ctrl+Z', 'Ctrl+W'].map(k => `
+            <button class="action-btn-48"><span class="vis-pill content-cell" style="height:32px;border-radius:10px;padding:0 4px;font-size:10px;font-weight:700;border-color:rgba(196,181,253,0.35);">${k}</span></button>
+          `).join('')}
+        </div>
+
+        <!-- Sub-linha 3B Expandida: 3 atalhos do servidor (F5, Ctrl+Shift+Esc sem truncar, Alt+F4) -->
+        <div style="display:grid;grid-template-columns:0.85fr 1.45fr 0.90fr;gap:4px;height:48px;align-items:center;">
+          <button class="action-btn-48"><span class="vis-pill content-cell" style="height:32px;border-radius:10px;padding:0 4px;font-size:10px;font-weight:700;border-color:rgba(196,181,253,0.35);">F5</span></button>
+          <button class="action-btn-48"><span class="vis-pill content-cell" style="height:32px;border-radius:10px;padding:0 4px;font-size:10px;font-weight:700;border-color:rgba(196,181,253,0.35);">Ctrl+Shift+Esc</span></button>
+          <button class="action-btn-48"><span class="vis-pill content-cell" style="height:32px;border-radius:10px;padding:0 4px;font-size:10px;font-weight:700;color:var(--status-err);border-color:rgba(248,113,113,0.38);">Alt+F4</span></button>
+        </div>
+
+        <!-- Linha de Input de Texto em Tempo Real -->
+        <div style="display:flex;align-items:center;gap:4px;height:48px;">
+          <div class="structured-input-wrap" style="flex:1;">
+            <div class="structured-input" style="height:38px;border-radius:12px;padding:0 10px;">
+              <input type="text" value="" placeholder="Digitar no PC em tempo real…" aria-label="Digitar no PC em tempo real" readonly />
+            </div>
+          </div>
+          <button class="action-btn-48" aria-label="Backspace no PC"><span class="vis-pill content-cell" style="width:38px;height:38px;border-radius:12px;padding:0;">${ico('backspace', 16)}</span></button>
+          <button class="action-btn-48" aria-label="Enviar Enter"><span class="vis-pill primary" style="width:38px;height:38px;border-radius:12px;padding:0;">${ico('chevRight', 16)}</span></button>
+          <button class="action-btn-48" aria-label="Fechar teclado" onclick="goScenario('trackpad')"><span class="vis-pill content-cell" style="width:38px;height:38px;border-radius:12px;padding:0;">${ico('close', 16)}</span></button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV054CanhotoAndTheme() {
+  const isLight = state.theme === 'light';
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;">
+      <!-- FASE 1C (PARTE 1): Trackpad com Modo Canhoto (Trilha ROLAR 48dp à Esquerda) + Chip Energia -->
+      <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;">
+        <div class="pc-actions-strip">
+          <button class="pc-chip-hit" onclick="goScenario('v054-power-shortcuts')">
+            <span class="pc-chip-vis content-cell">${ico('keyboard', 14)}<span>Teclado</span></span>
+          </button>
+          <button class="pc-chip-hit">
+            <span class="pc-chip-vis content-cell">${ico('drag', 14)}<span>Arrastar</span></span>
+          </button>
+          <button class="pc-chip-hit">
+            <span class="pc-chip-vis content-cell">${ico('mute', 14)}<span>Mudo PC</span></span>
+          </button>
+          <button class="pc-chip-hit" onclick="goScenario('v054-power-shortcuts')">
+            <span class="pc-chip-vis content-cell" style="border-color:rgba(196,181,253,0.38);">${ico('powerDisplay', 14)}<span>Energia</span></span>
+          </button>
+        </div>
+
+        <!-- Linha Invertida (Modo Canhoto): Trilha de Rolagem 48dp à ESQUERDA + Área Tátil à DIREITA -->
+        <div class="trackpad-row" style="flex:1;min-height:0;">
+          <div class="scroll-rail" aria-label="Trilha de rolagem à esquerda (Modo Canhoto)" style="border-color:var(--ctx-player);">
+            ${ico('chevUp', 16)}
+            <div style="display:flex;flex-direction:column;align-items:center;gap:2px;">
+              <span class="s-badge accent" style="font-size:8px;padding:1px 4px;">ESQ</span>
+              <span style="font-size:9px;font-weight:700;letter-spacing:0.06em;">ROLAR</span>
+            </div>
+            ${ico('chevDown', 16)}
+          </div>
+
+          <div class="trackpad-pad">
+            <span class="s-badge accent" style="font-size:9px;">Modo Canhoto Ativo • Trilha à Esquerda</span>
+            <div style="font-size:12px;font-weight:700;color:var(--text-1);margin-top:2px;">Área tátil do PC</div>
+            <div style="font-size:10px;color:var(--text-3);line-height:1.38;">
+              Rolagem de 1 dedo ao alcance do polegar esquerdo<br>
+              1 toque: esquerdo • 2 dedos: direito/rolar
+            </div>
+          </div>
+        </div>
+
+        <div class="clicks-3-row">
+          <button class="action-btn-48"><span class="vis-pill content-cell" style="height:36px;">Esquerdo</span></button>
+          <button class="action-btn-48"><span class="vis-pill content-cell" style="height:36px;">Meio</span></button>
+          <button class="action-btn-48"><span class="vis-pill content-cell" style="height:36px;">Direito</span></button>
+        </div>
+
+        <!-- Toggle Modo Canhoto integrado ao card do Trackpad (>= 48dp) -->
+        <div class="content-card" style="padding:4px 10px;border-radius:16px;display:flex;align-items:center;justify-content:space-between;min-height:48px;">
+          <div style="min-width:0;">
+            <div style="font-size:11px;font-weight:700;color:var(--text-1);">Modo Canhoto (trilha à esquerda)</div>
+            <div style="font-size:9.5px;color:var(--text-2);">EN: Left-handed scroll rail • Cursor 1,8x</div>
+          </div>
+          <button class="action-btn-48" aria-label="Alternar Modo Canhoto" onclick="goScenario('trackpad')" style="padding:0 4px;">
+            <div class="nuvio-switch on">
+              <div class="nuvio-switch-knob"></div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <!-- FASE 1C (PARTE 2): Seletor de Tema (Sistema | Escuro | Claro) em Ajustes > Interação e Tela -->
+      <section class="content-card" style="padding:8px 11px;border-radius:18px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="section-title" style="margin:0;">FASE 1C • AJUSTES &gt; TEMA DO APLICATIVO (APPTHEMEMODE)</span>
+          <span class="s-badge accent">WCAG AA</span>
+        </div>
+        <div style="font-size:9.8px;color:var(--text-2);">
+          Aparência / Theme: escolha entre seguir o Android ou fixar Sala Escura / Fundo Claro:
+        </div>
+        <div class="profile-seg-4" style="grid-template-columns:repeat(3,minmax(0,1fr));height:48px;">
+          <div class="profile-seg-bg"></div>
+          <button class="profile-pill-btn" onclick="setTheme('dark')">
+            <span class="profile-pill-vis">Sistema / System</span>
+          </button>
+          <button class="profile-pill-btn ${!isLight ? 'active' : ''}" onclick="setTheme('dark')">
+            <span class="profile-pill-vis">Escuro / Dark</span>
+          </button>
+          <button class="profile-pill-btn ${isLight ? 'active' : ''}" onclick="setTheme('light')">
+            <span class="profile-pill-vis">Claro / Light</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV054RemoteSwipePad() {
+  return `
+    <div class="tab-body morph-in">
+      <div class="remote-layout">
+        <div class="cockpit-wrap">
+          <!-- Topo do Cockpit: Satélite Voltar + Alternador Discreto [ D-Pad | Gestos ] + Satélite Início -->
+          <div class="sat-row" style="align-items:center;">
+            <button class="glass-circle" aria-label="Voltar"><span class="glass-circle-vis glass-regular">${ico('back', 19)}</span></button>
+
+            <div role="tablist" aria-label="Modo de navegação do controle" style="position:relative;width:156px;height:48px;display:grid;grid-template-columns:1fr 1fr;align-items:center;">
+              <div class="glass-regular" style="position:absolute;left:0;right:0;top:7px;bottom:7px;border-radius:999px;pointer-events:none;"></div>
+              <button class="action-btn-48" role="tab" aria-selected="false" onclick="goScenario('remote-home')" style="position:relative;z-index:2;">
+                <span style="height:28px;width:100%;margin:0 3px;border-radius:999px;display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;color:var(--text-2);">D-Pad</span>
+              </button>
+              <button class="action-btn-48" role="tab" aria-selected="true" style="position:relative;z-index:2;">
+                <span style="height:28px;width:100%;margin:0 3px;border-radius:999px;background:var(--pill-active-bg);color:var(--pill-active-fg);display:flex;align-items:center;justify-content:center;font-size:10.5px;font-weight:700;">Gestos</span>
+              </button>
+            </div>
+
+            <button class="glass-circle" aria-label="Início"><span class="glass-circle-vis glass-regular">${ico('home', 19)}</span></button>
+          </div>
+
+          <!-- Meio do Cockpit: Rocker VOL intacto + PrecisionSwipePad Gestual + Rocker CH intacto -->
+          <div class="cockpit-mid">
+            <div class="glass-rocker glass-regular">
+              <button class="rocker-zone glass-btn" aria-label="Aumentar volume">${ico('plus', 19)}</button>
+              <div class="rocker-sep"></div>
+              <button class="rocker-mid-btn glass-btn" aria-label="Mudo"><span class="rocker-mid-pill">${ico('mute', 16)}</span></button>
+              <div class="rocker-sep"></div>
+              <button class="rocker-zone glass-btn" aria-label="Diminuir volume">${ico('minus', 19)}</button>
+            </div>
+
+            <!-- Superfície Tátil Gestual (PrecisionSwipePad — GlassVariant.REGULAR elevated) -->
+            <button class="glass-regular elevated" aria-label="Superfície de toque gestual do Nuvio: deslizar para setas, toque para OK, segurar para Voltar" style="width:184px;height:184px;border-radius:46px;position:relative;display:flex;align-items:center;justify-content:center;cursor:pointer;font-family:var(--font-ui);padding:0;background-image:radial-gradient(var(--trackpad-dots) 1.25px, transparent 1.25px), var(--glass-reg-bg-elevated);background-size:16px 16px, 100% 100%;">
+              <!-- Indicadores direcionais sutis nas 4 bordas (pointer-events:none) -->
+              <span aria-hidden="true" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);color:var(--text-2);opacity:0.65;pointer-events:none;">${ico('chevUp', 18)}</span>
+              <span aria-hidden="true" style="position:absolute;bottom:8px;left:50%;transform:translateX(-50%);color:var(--text-2);opacity:0.65;pointer-events:none;">${ico('chevDown', 18)}</span>
+              <span aria-hidden="true" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);color:var(--text-2);opacity:0.65;pointer-events:none;">${ico('chevLeft', 18)}</span>
+              <span aria-hidden="true" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);color:var(--text-2);opacity:0.65;pointer-events:none;">${ico('chevRight', 18)}</span>
+
+              <!-- Núcleo central informativo do Swipe Pad -->
+              <span style="width:124px;height:124px;border-radius:32px;border:1px dashed var(--glass-reg-border);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px;text-align:center;pointer-events:none;">
+                <span style="color:var(--ctx-player);display:flex;">${ico('touch', 20)}</span>
+                <span style="font-size:10.5px;font-weight:800;letter-spacing:0.04em;color:var(--text-1);">SWIPE PAD</span>
+                <span style="font-size:9px;font-weight:600;color:var(--text-2);line-height:1.28;">
+                  Deslizar: Setas<br>
+                  1 Toque: <b>OK</b><br>
+                  Segurar: <b>Voltar</b>
+                </span>
+              </span>
+            </button>
+
+            <div class="glass-rocker glass-regular">
+              <button class="rocker-zone glass-btn" aria-label="Canal acima">${ico('chevUp', 20)}</button>
+              <div class="rocker-sep"></div>
+              <span class="rocker-label">CH</span>
+              <div class="rocker-sep"></div>
+              <button class="rocker-zone glass-btn" aria-label="Canal abaixo">${ico('chevDown', 20)}</button>
+            </div>
+          </div>
+
+          <!-- Satélites Inferiores Intactos -->
+          <div class="sat-row">
+            <button class="glass-circle" aria-label="Detalhes"><span class="glass-circle-vis glass-regular">${ico('info', 19)}</span></button>
+            <button class="glass-circle" aria-label="Tela cheia"><span class="glass-circle-vis glass-regular">${ico('fullscreen', 19)}</span></button>
+          </div>
+        </div>
+
+        ${renderDynamicDock('remote-home')}
+      </div>
+    </div>
+  `;
+}
+
+function renderV054AppsMiniPlayer() {
+  const filters = ['Todos', 'Filmes', 'Séries', 'TV', 'Não assistidos'];
+  const posters = [
+    { title: 'Severance', sub: 'Série · 2 temp.', badge: 'S01 ✓', cls: '', series: true },
+    { title: 'Duna: Parte 2', sub: 'Filme · 4K DV', badge: '✓ Visto', cls: 'p2', series: false }
+  ];
+
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 4px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+      <!-- Conteúdo Superior da Aba Apps (Assistir) com Cards 100% Opacos -->
+      <div style="display:flex;flex-direction:column;gap:5px;flex:1;min-height:0;">
+        <div style="display:flex;gap:5px;align-items:center;height:48px;flex-shrink:0;">
+          <div class="structured-input-wrap" style="flex:1;">
+            <div class="structured-input" style="height:36px;">
+              <input type="text" value="" placeholder="Buscar biblioteca e addons…" aria-label="Buscar na biblioteca e addons" readonly />
+            </div>
+          </div>
+          <button class="action-btn-48" aria-label="Busca por voz"><span class="vis-pill content-cell" style="height:36px;width:48px;padding:0;">${ico('mic', 15)}</span></button>
+          <button class="action-btn-48" aria-label="Atualizar biblioteca"><span class="vis-pill content-cell" style="height:36px;width:48px;padding:0;">${ico('refresh', 15)}</span></button>
+        </div>
+
+        <div class="apps-filter-5">
+          ${filters.map((f, i) => `
+            <button class="sheet-filter-hit ${i === 0 ? 'active' : ''}">
+              <span class="sheet-filter-vis content-cell" style="height:28px;padding:0 4px;font-size:9.5px;">${f}</span>
+            </button>
+          `).join('')}
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="section-title" style="margin:0;">CONTINUAR ASSISTINDO</span>
+          <span style="font-size:9.5px;color:var(--text-3);font-weight:600;">Toque retoma na TV</span>
+        </div>
+        <div class="cw-grid-2">
+          <button class="cw-card-btn content-card" style="min-height:94px;padding:5px;" onclick="goScenario('remote-player')">
+            <div class="cw-thumb" style="height:50px;">
+              ${ico('playPause', 17)}
+              <div class="cw-progress-track"><div class="cw-progress-fill" style="width:36%;"></div></div>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-1);white-space:nowrap;">Andor (Tocando)</div>
+            <div style="font-size:9.5px;color:var(--text-2);white-space:nowrap;">S01 E03 · 18:42 / 52:10</div>
+          </button>
+          <button class="cw-card-btn content-card" style="min-height:94px;padding:5px;" onclick="goScenario('remote-player')">
+            <div class="cw-thumb alt" style="height:50px;">
+              ${ico('playPause', 17)}
+              <div class="cw-progress-track"><div class="cw-progress-fill" style="width:82%;"></div></div>
+            </div>
+            <div style="font-size:11px;font-weight:700;color:var(--text-1);white-space:nowrap;">O Urso</div>
+            <div style="font-size:9.5px;color:var(--text-2);white-space:nowrap;">S03 E02 · 11m restantes</div>
+          </button>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="section-title" style="margin:0;">SUA BIBLIOTECA</span>
+          <span class="s-badge">24 títulos</span>
+        </div>
+        <div class="lib-grid-2">
+          ${posters.map(p => `
+            <div class="lib-poster-card content-card" style="padding:5px;gap:3px;">
+              <div class="lib-poster-art ${p.cls}" style="height:56px;">
+                ${ico(p.series ? 'tv' : 'library', 18)}
+                <span class="lib-badge-corner">${p.badge}</span>
+              </div>
+              <div class="lib-card-foot">
+                <button class="lib-main-hit" onclick="goScenario('remote-player')">
+                  <span style="font-size:10.5px;font-weight:700;color:var(--text-1);white-space:nowrap;">${p.title}</span>
+                  <span style="font-size:9px;color:var(--text-2);white-space:nowrap;">${p.sub}</span>
+                </button>
+                <button class="lib-more-hit" aria-label="Menu de ações de ${p.title}">
+                  <span class="lib-more-vis">${ico('more', 13)}</span>
+                </button>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+
+      <!-- FASE 2B: Mini-Player Persistente 100% Opaco (ContentCardSurface — ZERO vidro) acima do dock -->
+      <section class="content-card" aria-label="Mini-Player Persistente Opaco" style="border-radius:18px;padding:4px 6px 6px 9px;border:1.5px solid var(--ctx-player);display:flex;flex-direction:column;gap:3px;flex-shrink:0;box-shadow:0 8px 20px rgba(0,0,0,0.34);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
+          <button onclick="goScenario('remote-player')" style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;font-family:var(--font-ui);">
+            <div class="np-poster" style="width:36px;height:36px;border-radius:9px;flex-shrink:0;">
+              ${ico('library', 15)}
+            </div>
+            <div style="min-width:0;flex:1;display:flex;flex-direction:column;gap:1px;">
+              <span style="font-size:8.5px;font-weight:800;letter-spacing:0.03em;color:var(--ctx-player);white-space:nowrap;">● TOCANDO • 100% OPACO</span>
+              <span style="font-size:11.2px;font-weight:800;color:var(--text-1);white-space:nowrap;">Andor · S01 E03</span>
+              <span style="font-size:9.5px;color:var(--text-2);white-space:nowrap;">18:42 / 52:10 • Abrir Player ›</span>
+            </div>
+          </button>
+
+          <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+            <button class="action-btn-48" aria-label="Pausar ou reproduzir" onclick="goScenario('remote-player')">
+              <span class="vis-pill primary" style="width:36px;height:36px;border-radius:11px;padding:0;">${ico('playPause', 15)}</span>
+            </button>
+            <button class="action-btn-48" aria-label="Abrir Remote Player" onclick="goScenario('remote-player')">
+              <span class="vis-pill content-cell" style="width:34px;height:34px;border-radius:10px;padding:0;">${ico('chevRight', 15)}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra de progresso fina de 3dp na base do Mini-Player Opaco -->
+        <div style="height:3.5px;border-radius:999px;background:var(--content-cell);overflow:hidden;">
+          <div style="width:36%;height:100%;border-radius:999px;background:var(--ctx-player);"></div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV054AndroidWidgets() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:7px;">
+      <!-- Cabeçalho explicativo da especificação dos Widgets da Home Screen Android -->
+      <div class="content-cell" style="padding:6px 10px;border-radius:13px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+        <div>
+          <div style="font-size:9px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">FASE 2C • WIDGETS DA TELA INICIAL DO ANDROID</div>
+          <div style="font-size:10.5px;font-weight:700;color:var(--text-1);">Superfícies opacas Nuvio • Alvos ≥ 48dp • Zero Material 3</div>
+        </div>
+        <span class="s-badge accent">4×1 &amp; 4×2</span>
+      </div>
+
+      <!-- WIDGET 1: 4x1 — Estado Offline (Wake-on-LAN em 1 toque) -->
+      <section class="content-card" aria-label="Widget 4x1 Estado Offline com Wake-on-LAN" style="padding:8px 10px;border-radius:22px;border-color:rgba(251,191,36,0.42);display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:9px;font-weight:700;color:var(--text-2);">
+          <span>1. WIDGET 4×1 • ESTADO OFFLINE (WAKE-ON-LAN)</span>
+          <span style="color:var(--status-warn);">● PC Desligado / Suspenso</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:48px;">
+          <button onclick="goScenario('ajustes')" style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;display:flex;align-items:center;gap:8px;text-align:left;cursor:pointer;font-family:var(--font-ui);">
+            <div style="width:34px;height:34px;border-radius:10px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 34, false)}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:11.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Sala</div>
+              <div style="font-size:9.8px;font-weight:700;color:var(--status-warn);white-space:nowrap;">Offline • Toque p/ abrir</div>
+            </div>
+          </button>
+
+          <button class="action-btn-48" style="min-width:136px;" onclick="goScenario('remote-home')">
+            <span class="vis-pill primary" style="width:100%;height:38px;border-radius:13px;padding:0 10px;font-size:10.8px;font-weight:700;">
+              ${ico('bolt', 13)} Acordar PC (WoL)
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <!-- WIDGET 2: 4x1 — Estado Online Compacto (Status + Play/Pause, Vol -, Vol +, Mudo) -->
+      <section class="content-card" aria-label="Widget 4x1 Estado Online Compacto" style="padding:8px 10px;border-radius:22px;display:flex;flex-direction:column;gap:4px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:9px;font-weight:700;color:var(--text-2);">
+          <span>2. WIDGET 4×1 • ESTADO ONLINE (CONTROLE RÁPIDO)</span>
+          <span style="color:var(--status-on);">● Conectado • 2 ms</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
+          <button onclick="goScenario('remote-home')" style="flex:1;min-width:48px;min-height:48px;border:none;background:transparent;padding:0;display:flex;align-items:center;gap:7px;text-align:left;cursor:pointer;font-family:var(--font-ui);">
+            <div style="width:30px;height:30px;border-radius:9px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 30, false)}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:11px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Sala</div>
+              <div style="font-size:9.5px;font-weight:700;color:var(--status-on);white-space:nowrap;">● Online</div>
+            </div>
+          </button>
+
+          <div style="display:flex;align-items:center;gap:2px;flex-shrink:0;">
+            <button class="action-btn-48" aria-label="Play ou Pause"><span class="vis-pill primary" style="width:36px;height:36px;border-radius:11px;padding:0;">${ico('playPause', 15)}</span></button>
+            <button class="action-btn-48" aria-label="Diminuir volume"><span class="vis-pill content-cell" style="width:36px;height:36px;border-radius:11px;padding:0;">${ico('minus', 15)}</span></button>
+            <button class="action-btn-48" aria-label="Aumentar volume"><span class="vis-pill content-cell" style="width:36px;height:36px;border-radius:11px;padding:0;">${ico('plus', 15)}</span></button>
+            <button class="action-btn-48" aria-label="Silenciar"><span class="vis-pill content-cell" style="width:36px;height:36px;border-radius:11px;padding:0;">${ico('mute', 15)}</span></button>
+          </div>
+        </div>
+      </section>
+
+      <!-- WIDGET 3: 4x2 — Estado Online Expandido (Now Playing + Progresso + 5 Controles >= 48dp) -->
+      <section class="content-card" aria-label="Widget 4x2 Expandido com Now Playing" style="padding:9px 10px;border-radius:24px;display:flex;flex-direction:column;gap:6px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:9px;font-weight:700;color:var(--text-2);">
+          <span>3. WIDGET 4×2 • EXPANDIDO (NOW PLAYING + TRANSPORTE)</span>
+          <span style="color:var(--ctx-player);">Nuvio HTPC Ativo</span>
+        </div>
+
+        <!-- Faixa 1 do Widget 4x2: Now Playing clicável (>= 48dp) -->
+        <button class="content-cell" onclick="goScenario('remote-player')" style="width:100%;min-height:54px;padding:6px 9px;border-radius:14px;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:5px;cursor:pointer;font-family:var(--font-ui);">
+          <div style="width:100%;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+              <div class="np-poster" style="width:32px;height:32px;border-radius:8px;flex-shrink:0;">
+                ${ico('library', 14)}
+              </div>
+              <div style="min-width:0;">
+                <div style="font-size:11px;font-weight:800;color:var(--text-1);white-space:nowrap;">Andor · S01 E03 · Acerto de Contas</div>
+                <div style="font-size:9.5px;color:var(--text-2);white-space:nowrap;">PC Sala • 18:42 / 52:10 • Termina às 22:34</div>
+              </div>
+            </div>
+            <span class="s-badge accent" style="flex-shrink:0;">4K DV</span>
+          </div>
+          <div style="width:100%;height:3px;border-radius:999px;background:var(--content-card);overflow:hidden;">
+            <div style="width:36%;height:100%;border-radius:999px;background:var(--ctx-player);"></div>
+          </div>
+        </button>
+
+        <!-- Faixa 2 do Widget 4x2: 5 Botões Táticos (>= 48x48dp) -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;height:48px;align-items:center;">
+          <button class="action-btn-48" aria-label="Volume menos"><span class="vis-pill content-cell" style="height:36px;border-radius:12px;padding:0 4px;font-size:10px;font-weight:700;">Vol −</span></button>
+          <button class="action-btn-48" aria-label="Mudo"><span class="vis-pill content-cell" style="height:36px;border-radius:12px;padding:0 4px;font-size:10px;font-weight:700;">Mudo</span></button>
+          <button class="action-btn-48" aria-label="Play / Pause"><span class="vis-pill primary" style="height:36px;border-radius:12px;padding:0 4px;font-size:10px;font-weight:700;">${ico('playPause', 14)} Play</span></button>
+          <button class="action-btn-48" aria-label="Volume mais"><span class="vis-pill content-cell" style="height:36px;border-radius:12px;padding:0 4px;font-size:10px;font-weight:700;">Vol +</span></button>
+          <button class="action-btn-48" aria-label="Abrir Nuvio DeskRemote" onclick="goScenario('remote-home')"><span class="vis-pill content-cell" style="height:36px;border-radius:12px;padding:0 4px;font-size:10px;font-weight:700;">Abrir</span></button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderUpdateAndroidAvailable() {
   const notes = [
     { pt: 'Atualização automática integrada via GitHub Releases', en: 'Built-in auto-update via GitHub Releases' },
@@ -6211,7 +6724,17 @@ function renderPhoneHtml(scen, opts = {}) {
   const meta = SCENARIO_META[scen];
   const activeSheet = opts.playerSheet !== undefined ? opts.playerSheet : (meta.seg === 1 ? state.playerSheet : '');
   let innerBody = '';
-  if (scen === 'update-android') {
+  if (scen === 'v054-power-shortcuts') {
+    innerBody = renderV054PowerAndShortcuts();
+  } else if (scen === 'v054-canhoto-tema') {
+    innerBody = renderV054CanhotoAndTheme();
+  } else if (scen === 'v054-swipe-pad') {
+    innerBody = renderV054RemoteSwipePad();
+  } else if (scen === 'v054-apps-miniplayer') {
+    innerBody = renderV054AppsMiniPlayer();
+  } else if (scen === 'v054-widgets') {
+    innerBody = renderV054AndroidWidgets();
+  } else if (scen === 'update-android') {
     innerBody = renderUpdateAndroidAvailable();
   } else if (scen === 'update-android-states') {
     innerBody = renderUpdateAndroidStates();
@@ -6265,9 +6788,38 @@ function renderPhoneHtml(scen, opts = {}) {
   `;
 }
 
-// ==================== PAINEL OVERVIEW (AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
+// ==================== PAINEL OVERVIEW (v0.5.4 + AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
 function renderOverviewHtml() {
   return `
+    <section class="overview-section" id="overviewV054Section" style="width:1940px;max-width:none;margin-left:calc(50% - 970px);">
+      <div class="overview-section-head">
+        <h2>v0.5.4. Melhorias de UI/UX Pós-Pesquisa de Mercado — Fase 1 (Energia PC, Atalhos Mais ▾, Canhoto &amp; Tema) e Fase 2 (Swipe Pad, Mini-Player Opaco &amp; Widgets)</h2>
+        <span>Liquid Glass estrito (zero Material 3) • Vidro só na camada flutuante • Mini-Player e células 100% opacos • Separação Modo Nuvio vs Modo PC • Alvos ≥ 48dp</span>
+      </div>
+      <div class="overview-row" style="flex-wrap:nowrap;gap:16px;">
+        <div class="ov-item">
+          <div class="ov-label">F1A+1B. Modo PC • Folha Energia do PC (2º Toque) &amp; Atalhos (Mais ▾)</div>
+          ${renderPhoneHtml('v054-power-shortcuts')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F1C. Modo PC &amp; Ajustes • Trackpad Canhoto (Esq.) &amp; Seletor de Tema</div>
+          ${renderPhoneHtml('v054-canhoto-tema')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F2A. Modo Nuvio • Remote [ D-Pad | Gestos ] (PrecisionSwipePad)</div>
+          ${renderPhoneHtml('v054-swipe-pad')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F2B. Modo Nuvio • Aba Apps com Mini-Player Persistente 100% Opaco</div>
+          ${renderPhoneHtml('v054-apps-miniplayer')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F2C. Android Home • Widgets 4×1 (Offline WoL / Online) e 4×2</div>
+          ${renderPhoneHtml('v054-widgets')}
+        </div>
+      </div>
+    </section>
+
     <section class="overview-section" id="overviewAutoUpdateSection">
       <div class="overview-section-head">
         <h2>000. Nuvio DeskRemote — Popup de Atualização Automática via GitHub Releases (Offrain-code/nuvio-deskremote)</h2>

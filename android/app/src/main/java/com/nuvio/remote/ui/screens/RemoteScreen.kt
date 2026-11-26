@@ -65,6 +65,8 @@ import com.nuvio.remote.ui.components.Haptics
 import com.nuvio.remote.ui.components.LiquidCircleButton
 import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
+import com.nuvio.remote.ui.components.PrecisionSwipePad
+import com.nuvio.remote.ui.components.RemotePadModeToggle
 import com.nuvio.remote.ui.i18n.l10n
 import com.nuvio.remote.ui.theme.GlassVariant
 import com.nuvio.remote.ui.theme.LocalHapticsEnabled
@@ -180,6 +182,8 @@ fun RemoteScreen(
     onSelectState: (NuvioScreenState) -> Unit,
     onOpenAppsTab: () -> Unit,
     onOpenCinemaMode: () -> Unit = {},
+    swipePadMode: Boolean = false,
+    onSwipePadModeChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -274,14 +278,33 @@ fun RemoteScreen(
                             )
                         }
 
-                        PrecisionDPadRing(
-                            diameter = metrics.dpadDiameter,
-                            centerSize = metrics.centerOkSize,
-                            accentColor = accent.primary,
-                            accentSurface = accent.surfaceTint,
-                            onDirection = onNav,
-                            onOk = { onNav("ok") },
-                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(metrics.sideGap),
+                        ) {
+                            RemotePadModeToggle(
+                                swipeMode = swipePadMode,
+                                onSelectMode = onSwipePadModeChange,
+                            )
+                            if (swipePadMode) {
+                                PrecisionSwipePad(
+                                    diameter = metrics.dpadDiameter,
+                                    accentColor = accent.primary,
+                                    onDirection = onNav,
+                                    onOk = { onNav("ok") },
+                                    onBack = { onNav("back") },
+                                )
+                            } else {
+                                PrecisionDPadRing(
+                                    diameter = metrics.dpadDiameter,
+                                    centerSize = metrics.centerOkSize,
+                                    accentColor = accent.primary,
+                                    accentSurface = accent.surfaceTint,
+                                    onDirection = onNav,
+                                    onOk = { onNav("ok") },
+                                )
+                            }
+                        }
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,

@@ -59,6 +59,7 @@ import com.nuvio.remote.connection.NuvioBridgeStateHolder
 import com.nuvio.remote.connection.NuvioBridgeStatus
 import com.nuvio.remote.connection.NuvioMusicAlbum
 import com.nuvio.remote.connection.NuvioVideoTitle
+import com.nuvio.remote.ui.components.AppsPersistentMiniPlayer
 import com.nuvio.remote.ui.components.Haptics
 import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
@@ -107,6 +108,7 @@ fun AppsScreen(
 ) {
     val bridgeStatus by bridge.status.collectAsState()
     val bridgeConnected = bridgeStatus == NuvioBridgeStatus.CONNECTED
+    val nowPlaying by bridge.nowPlaying.collectAsState()
     val liveSources by bridge.sources.collectAsState()
     val catalog = bridge.catalog
     val videoLibrary by catalog.videoLibrary.collectAsState()
@@ -152,51 +154,61 @@ fun AppsScreen(
     }
 
     Box(modifier = modifier.fillMaxSize()) {
-        when (subTab) {
-            AppsSubTab.WATCH -> AppsWatchTab(
-                bridgeConnected = bridgeConnected,
-                searchQuery = searchQuery,
-                onSearchQueryChange = { searchQuery = it },
-                onSubmitSearch = { q -> if (q.isNotBlank()) catalog.search(q) },
-                selectedFilter = selectedFilter,
-                onSelectFilter = { selectedFilter = it },
-                continueItems = continueItems,
-                videoLibrary = videoLibrary,
-                searchResults = searchResults,
-                onRefresh = {
-                    catalog.requestContinue()
-                    catalog.requestLibrary("video")
-                },
-                onResume = { item -> catalog.resume(item.parentId, item.videoId) },
-                onOpenTitle = { title ->
-                    if (title.contentType.equals("series", ignoreCase = true)) {
-                        selectedSeries = title
-                        catalog.requestEpisodes(title.contentType, title.id)
-                    } else {
-                        catalog.openTitle(title.contentType, title.id)
-                    }
-                },
-                onOpenMenuForTitle = { title ->
-                    catalog.requestMenu("title", title.contentType, title.id)
-                },
-                onOpenMenuForContinue = { item ->
-                    catalog.requestMenu("continue", item.contentType, item.parentId, item.videoId)
-                },
-            )
-            AppsSubTab.MUSIC -> AppsMusicTab(
-                bridgeConnected = bridgeConnected,
-                musicLibrary = musicLibrary,
-                onOpenAlbum = { album ->
-                    selectedAlbum = album
-                    catalog.requestAlbumTracks(album.browseId)
-                },
-                onArtistAction = { artistId, action -> catalog.artistAction(artistId, action) },
-            )
-            AppsSubTab.MODULES -> AppsModulesTab(
-                onKey = onKey,
-                onWindowAction = onWindowAction,
-                onTogglePlayerMode = onTogglePlayerMode,
-                onOpenRemoteTab = onOpenRemoteTab,
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                when (subTab) {
+                    AppsSubTab.WATCH -> AppsWatchTab(
+                        bridgeConnected = bridgeConnected,
+                        searchQuery = searchQuery,
+                        onSearchQueryChange = { searchQuery = it },
+                        onSubmitSearch = { q -> if (q.isNotBlank()) catalog.search(q) },
+                        selectedFilter = selectedFilter,
+                        onSelectFilter = { selectedFilter = it },
+                        continueItems = continueItems,
+                        videoLibrary = videoLibrary,
+                        searchResults = searchResults,
+                        onRefresh = {
+                            catalog.requestContinue()
+                            catalog.requestLibrary("video")
+                        },
+                        onResume = { item -> catalog.resume(item.parentId, item.videoId) },
+                        onOpenTitle = { title ->
+                            if (title.contentType.equals("series", ignoreCase = true)) {
+                                selectedSeries = title
+                                catalog.requestEpisodes(title.contentType, title.id)
+                            } else {
+                                catalog.openTitle(title.contentType, title.id)
+                            }
+                        },
+                        onOpenMenuForTitle = { title ->
+                            catalog.requestMenu("title", title.contentType, title.id)
+                        },
+                        onOpenMenuForContinue = { item ->
+                            catalog.requestMenu("continue", item.contentType, item.parentId, item.videoId)
+                        },
+                    )
+                    AppsSubTab.MUSIC -> AppsMusicTab(
+                        bridgeConnected = bridgeConnected,
+                        musicLibrary = musicLibrary,
+                        onOpenAlbum = { album ->
+                            selectedAlbum = album
+                            catalog.requestAlbumTracks(album.browseId)
+                        },
+                        onArtistAction = { artistId, action -> catalog.artistAction(artistId, action) },
+                    )
+                    AppsSubTab.MODULES -> AppsModulesTab(
+                        onKey = onKey,
+                        onWindowAction = onWindowAction,
+                        onTogglePlayerMode = onTogglePlayerMode,
+                        onOpenRemoteTab = onOpenRemoteTab,
+                    )
+                }
+            }
+
+            AppsMiniPlayerDockSlot(
+                nowPlaying = nowPlaying,
+                onPlayPause = { onKey("Space") },
+                onOpenPlayer = onOpenRemoteTab,
             )
         }
 
@@ -282,6 +294,21 @@ private fun requestSubTabCatalogData(
         AppsSubTab.MUSIC -> catalog.requestLibrary("music")
         AppsSubTab.MODULES -> Unit
     }
+}
+
+@Composable
+private fun AppsMiniPlayerDockSlot(
+    nowPlaying: com.nuvio.remote.connection.NuvioNowPlaying?,
+    onPlayPause: () -> Unit,
+    onOpenPlayer: () -> Unit,
+) {
+    if (nowPlaying == null) return
+    AppsPersistentMiniPlayer(
+        nowPlaying = nowPlaying,
+        onPlayPause = onPlayPause,
+        onOpenPlayer = onOpenPlayer,
+        modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

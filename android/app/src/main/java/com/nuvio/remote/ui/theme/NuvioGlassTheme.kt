@@ -129,6 +129,18 @@ half4 main(float2 fragCoord) {
 }
 """
 
+/** User-selectable appearance mode override (System / Dark / Light). */
+enum class AppThemeMode(val wire: String) {
+    SYSTEM("system"),
+    DARK("dark"),
+    LIGHT("light"),
+    ;
+
+    companion object {
+        fun fromWire(value: String?): AppThemeMode = entries.find { it.wire == value } ?: SYSTEM
+    }
+}
+
 /** Official Liquid Glass surface variants. */
 enum class GlassVariant {
     REGULAR,

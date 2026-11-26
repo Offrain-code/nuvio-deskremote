@@ -10,6 +10,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -34,8 +35,8 @@ import androidx.compose.material.icons.automirrored.rounded.VolumeOff
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.MonitorHeart
 import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.TouchApp
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.runtime.Composable
@@ -72,8 +73,10 @@ import com.nuvio.remote.connection.MouseButtons
 import com.nuvio.remote.connection.NuvioConnection
 import com.nuvio.remote.ui.components.Haptics
 import com.nuvio.remote.ui.components.NuvioGlassSlider
+import com.nuvio.remote.ui.components.NuvioGlassSwitch
 import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
+import com.nuvio.remote.ui.components.PcPowerDialog
 import com.nuvio.remote.ui.components.RemoteTextInputBar
 import com.nuvio.remote.ui.i18n.LocalAppLanguage
 import com.nuvio.remote.ui.i18n.ResolvedLanguage
@@ -101,6 +104,8 @@ fun TrackpadScreen(
     modifier: Modifier = Modifier,
     initialSensitivity: Float = 1.6f,
     onSensitivityChange: (Float) -> Unit = {},
+    leftHanded: Boolean = false,
+    onLeftHandedChange: (Boolean) -> Unit = {},
 ) {
     val context = LocalContext.current
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -113,6 +118,7 @@ fun TrackpadScreen(
     var dragLocked by remember { mutableStateOf(false) }
     var gestureDragActive by remember { mutableStateOf(false) }
     var sensitivityExpanded by rememberSaveable { mutableStateOf(false) }
+    var showPowerDialog by remember { mutableStateOf(false) }
 
     DisposableEffect(Unit) {
         onDispose {
@@ -121,6 +127,12 @@ fun TrackpadScreen(
             }
         }
     }
+
+    val gestureCallbacks = rememberTrackpadGestureCallbacks(
+        conn = conn,
+        hapticsEnabled = hapticsEnabled,
+        onGestureDragChange = { gestureDragActive = it },
+    )
 
     Box(
         modifier = modifier
@@ -142,53 +154,22 @@ fun TrackpadScreen(
                     conn.sendMouseHold(MouseButtons.LEFT, next)
                     if (hapticsEnabled) Haptics.toggle(context)
                 },
-                onSuspendDisplay = { conn.sendWindow("suspend_display") },
+                onOpenPowerMenu = { showPowerDialog = true },
             )
 
-            Row(
+            TrackpadSurfaceRow(
+                sensitivity = sensitivity,
+                dragLocked = dragLocked || gestureDragActive,
+                leftHanded = leftHanded,
+                callbacks = gestureCallbacks,
+                onScroll = { delta ->
+                    if (hapticsEnabled) Haptics.scroll(context)
+                    conn.sendMouseScroll(delta)
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                TrackpadTouchSurface(
-                    sensitivity = sensitivity,
-                    dragLocked = dragLocked || gestureDragActive,
-                    onMove = { dx, dy -> conn.sendMouseMove(dx, dy) },
-                    onTap = {
-                        if (hapticsEnabled) Haptics.action(context)
-                        conn.sendMouseClick(MouseButtons.LEFT)
-                    },
-                    onTwoFingerTap = {
-                        if (hapticsEnabled) Haptics.action(context)
-                        conn.sendMouseClick(MouseButtons.RIGHT)
-                    },
-                    onGestureDragChange = { active ->
-                        gestureDragActive = active
-                        conn.sendMouseHold(MouseButtons.LEFT, active)
-                        if (hapticsEnabled) {
-                            if (active) Haptics.toggle(context) else Haptics.action(context)
-                        }
-                    },
-                    onScroll = { delta ->
-                        if (hapticsEnabled) Haptics.scroll(context)
-                        conn.sendMouseScroll(delta)
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxHeight(),
-                )
-
-                TrackpadScrollRail(
-                    onScroll = { delta ->
-                        if (hapticsEnabled) Haptics.scroll(context)
-                        conn.sendMouseScroll(delta)
-                    },
-                    modifier = Modifier
-                        .width(48.dp)
-                        .fillMaxHeight(),
-                )
-            }
+            )
 
             MouseButtonsRow(
                 dragLocked = dragLocked,
@@ -201,11 +182,13 @@ fun TrackpadScreen(
             TrackpadSensitivityCard(
                 sensitivity = sensitivity,
                 expanded = sensitivityExpanded,
+                leftHanded = leftHanded,
                 onToggleExpanded = { sensitivityExpanded = !sensitivityExpanded },
                 onSensitivityChange = { next ->
                     sensitivity = next
                     onSensitivityChange(next)
                 },
+                onLeftHandedChange = onLeftHandedChange,
             )
         }
 
@@ -221,6 +204,96 @@ fun TrackpadScreen(
                 .align(Alignment.BottomCenter)
                 .padding(bottom = 8.dp),
         )
+    }
+
+    if (showPowerDialog) {
+        PcPowerDialog(
+            onAction = { action -> conn.sendWindow(action) },
+            onDismiss = { showPowerDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun rememberTrackpadGestureCallbacks(
+    conn: NuvioConnection,
+    hapticsEnabled: Boolean,
+    onGestureDragChange: (Boolean) -> Unit,
+): TrackpadGestureCallbacks {
+    val context = LocalContext.current
+    return TrackpadGestureCallbacks(
+        onMove = { dx, dy -> conn.sendMouseMove(dx, dy) },
+        onTap = {
+            if (hapticsEnabled) Haptics.action(context)
+            conn.sendMouseClick(MouseButtons.LEFT)
+        },
+        onTwoFingerTap = {
+            if (hapticsEnabled) Haptics.action(context)
+            conn.sendMouseClick(MouseButtons.RIGHT)
+        },
+        onGestureDragChange = { active ->
+            onGestureDragChange(active)
+            conn.sendMouseHold(MouseButtons.LEFT, active)
+            if (hapticsEnabled) {
+                if (active) Haptics.toggle(context) else Haptics.action(context)
+            }
+        },
+        onScroll = { delta ->
+            if (hapticsEnabled) Haptics.scroll(context)
+            conn.sendMouseScroll(delta)
+        },
+        onZoom = { delta ->
+            if (hapticsEnabled) Haptics.scroll(context)
+            conn.sendMouseZoom(delta)
+        },
+        onThreeFingerSwipe = { dir ->
+            if (hapticsEnabled) Haptics.toggle(context)
+            when (dir) {
+                ThreeFingerDirection.UP -> conn.sendKey("WinTab")
+                ThreeFingerDirection.DOWN -> conn.sendKey("WinD")
+                ThreeFingerDirection.LEFT, ThreeFingerDirection.RIGHT -> conn.sendKey("AltTab")
+            }
+        },
+    )
+}
+
+@Composable
+private fun TrackpadSurfaceRow(
+    sensitivity: Float,
+    dragLocked: Boolean,
+    leftHanded: Boolean,
+    callbacks: TrackpadGestureCallbacks,
+    onScroll: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (leftHanded) {
+            TrackpadScrollRail(
+                onScroll = onScroll,
+                modifier = Modifier
+                    .width(48.dp)
+                    .fillMaxHeight(),
+            )
+        }
+        TrackpadTouchSurface(
+            sensitivity = sensitivity,
+            dragLocked = dragLocked,
+            callbacks = callbacks,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
+        )
+        if (!leftHanded) {
+            TrackpadScrollRail(
+                onScroll = onScroll,
+                modifier = Modifier
+                    .width(48.dp)
+                    .fillMaxHeight(),
+            )
+        }
     }
 }
 
@@ -250,7 +323,7 @@ private fun TrackpadQuickActions(
     onToggleKeyboard: () -> Unit,
     onMutePc: () -> Unit,
     onToggleDragLock: () -> Unit,
-    onSuspendDisplay: () -> Unit,
+    onOpenPowerMenu: () -> Unit,
 ) {
     val fontScale = LocalDensity.current.fontScale
     BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
@@ -259,16 +332,12 @@ private fun TrackpadQuickActions(
         val kbLabel = l10n("Keyboard", "Teclado")
         val dragLabel = if (dragLocked) l10n("Release", "Soltar") else l10n("Drag", "Arrastar")
         val muteLabel = if (compactLabels) l10n("Mute", "Mudo") else l10n("Mute PC", "Mudo PC")
-        val screenOffLabel = if (compactLabels) {
-            l10n("Disp Off", "Tela Off")
-        } else {
-            l10n("Screen off", "Apagar tela")
-        }
+        val powerLabel = l10n("Power", "Energia")
         val actions = listOf(
             TrackpadActionSpec(kbLabel, Icons.Rounded.Keyboard, keyboardVisible, onToggleKeyboard),
             TrackpadActionSpec(dragLabel, Icons.Rounded.OpenWith, dragLocked, onToggleDragLock),
             TrackpadActionSpec(muteLabel, Icons.AutoMirrored.Rounded.VolumeOff, false, onMutePc),
-            TrackpadActionSpec(screenOffLabel, Icons.Rounded.MonitorHeart, false, onSuspendDisplay),
+            TrackpadActionSpec(powerLabel, Icons.Rounded.PowerSettingsNew, false, onOpenPowerMenu),
         )
 
         if (mode == TrackpadQuickActionsMode.ACCESSIBLE_GRID_2X2) {
@@ -439,11 +508,7 @@ private fun TrackpadActionChip(
 private fun TrackpadTouchSurface(
     sensitivity: Float,
     dragLocked: Boolean,
-    onMove: (Int, Int) -> Unit,
-    onTap: () -> Unit,
-    onTwoFingerTap: () -> Unit,
-    onGestureDragChange: (Boolean) -> Unit,
-    onScroll: (Int) -> Unit,
+    callbacks: TrackpadGestureCallbacks,
     modifier: Modifier = Modifier,
 ) {
     val scheme = LocalNuvioColors.current
@@ -470,11 +535,7 @@ private fun TrackpadTouchSurface(
             .trackpadGestures(
                 sensitivity = sensitivity,
                 tracker = doubleTapTracker,
-                onMove = onMove,
-                onTap = onTap,
-                onTwoFingerTap = onTwoFingerTap,
-                onGestureDragChange = onGestureDragChange,
-                onScroll = onScroll,
+                callbacks = callbacks,
             ),
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -536,10 +597,10 @@ private fun TrackpadTouchSurface(
             )
             NuvioText(
                 text = l10n(
-                    "1 tap: left click • 2 fingers: scroll\n" +
-                        "Double-tap & hold: drag • 2-finger tap: right click",
-                    "1 toque: clique esquerdo • 2 dedos: rolar\n" +
-                        "2 toques + segurar: arrastar • toque 2 dedos: direito",
+                    "1 tap: click • 2 fingers: scroll / pinch zoom\n" +
+                        "2-finger tap: right click • 3-finger swipe: windows",
+                    "1 toque: clique • 2 dedos: rolar / pinça zoom\n" +
+                        "Toque 2 dedos: direito • 3 dedos: janelas",
                 ),
                 style = NuvioTypography.KeyShortcutBadge,
                 color = scheme.textMuted,
@@ -690,8 +751,10 @@ private fun MouseButtonTile(label: String, highlighted: Boolean, onClick: () -> 
 private fun TrackpadSensitivityCard(
     sensitivity: Float,
     expanded: Boolean,
+    leftHanded: Boolean,
     onToggleExpanded: () -> Unit,
     onSensitivityChange: (Float) -> Unit,
+    onLeftHandedChange: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -851,21 +914,79 @@ private fun TrackpadSensitivityCard(
                         }
                     }
                 }
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(scheme.contentCellSurface)
+                        .border(1.dp, scheme.contentBorder, RoundedCornerShape(14.dp))
+                        .clickable {
+                            if (hapticsEnabled) Haptics.toggle(context)
+                            onLeftHandedChange(!leftHanded)
+                        }
+                        .padding(horizontal = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    NuvioText(
+                        text = l10n("Left-handed scroll rail", "Trilha de rolagem à esquerda"),
+                        style = NuvioTypography.KeyLabelCompact,
+                        color = scheme.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp),
+                    )
+                    NuvioGlassSwitch(
+                        checked = leftHanded,
+                        onCheckedChange = { next ->
+                            if (hapticsEnabled) Haptics.toggle(context)
+                            onLeftHandedChange(next)
+                        },
+                    )
+                }
             }
         }
     }
 }
 
+internal enum class ThreeFingerDirection {
+    UP,
+    DOWN,
+    LEFT,
+    RIGHT,
+}
+
+private data class TrackpadGestureCallbacks(
+    val onMove: (Int, Int) -> Unit,
+    val onTap: () -> Unit,
+    val onTwoFingerTap: () -> Unit,
+    val onGestureDragChange: (Boolean) -> Unit,
+    val onScroll: (Int) -> Unit,
+    val onZoom: (Int) -> Unit,
+    val onThreeFingerSwipe: (ThreeFingerDirection) -> Unit,
+)
+
+internal fun classifyThreeFingerSwipe(dx: Float, dy: Float, thresholdPx: Float = 48f): ThreeFingerDirection? {
+    if (abs(dx) < thresholdPx && abs(dy) < thresholdPx) return null
+    return if (abs(dy) >= abs(dx)) {
+        if (dy < 0f) ThreeFingerDirection.UP else ThreeFingerDirection.DOWN
+    } else {
+        if (dx < 0f) ThreeFingerDirection.LEFT else ThreeFingerDirection.RIGHT
+    }
+}
+
+private const val PINCH_ZOOM_DEADZONE = 0.025f
+private const val PINCH_ZOOM_GAIN = 14f
+private const val THREE_FINGER_THRESHOLD_PX = 48f
+
 private fun Modifier.trackpadGestures(
     sensitivity: Float,
     tracker: DoubleTapDragTracker,
-    onMove: (Int, Int) -> Unit,
-    onTap: () -> Unit,
-    onTwoFingerTap: () -> Unit,
-    onGestureDragChange: (Boolean) -> Unit,
-    onScroll: (Int) -> Unit,
+    callbacks: TrackpadGestureCallbacks,
 ): Modifier = this
-    .pointerInput(sensitivity, tracker, onMove, onTwoFingerTap, onGestureDragChange, onScroll) {
+    .pointerInput(sensitivity, tracker, callbacks) {
         val state = TrackpadMotionAccumulator()
         awaitEachGesture {
             val firstDown = awaitFirstDown(requireUnconsumed = false)
@@ -875,7 +996,7 @@ private fun Modifier.trackpadGestures(
                 var active = true
                 while (active) {
                     val event = awaitTrackpadEventWithHoldTimeout(tracker, session) {
-                        onGestureDragChange(true)
+                        callbacks.onGestureDragChange(true)
                     }
                     if (event != null) {
                         active = state.processEvent(
@@ -883,24 +1004,21 @@ private fun Modifier.trackpadGestures(
                             session = session,
                             sensitivity = sensitivity,
                             tracker = tracker,
-                            onMove = onMove,
-                            onTwoFingerTap = onTwoFingerTap,
-                            onGestureDragChange = onGestureDragChange,
-                            onScroll = onScroll,
+                            callbacks = callbacks,
                         )
                     }
                 }
             } finally {
                 if (!session.finishedNormally && tracker.onCancel()) {
-                    onGestureDragChange(false)
+                    callbacks.onGestureDragChange(false)
                 }
             }
         }
     }
-    .pointerInput(onTap, tracker) {
+    .pointerInput(callbacks, tracker) {
         detectTapGestures(
             onTap = {
-                if (!tracker.isDragging) onTap()
+                if (!tracker.isDragging) callbacks.onTap()
             },
         )
     }
@@ -923,6 +1041,9 @@ private class TrackpadGestureSession(
     var lastPos: Offset,
     var maxPointers: Int = 1,
     var twoFingerMoved: Boolean = false,
+    var threeFingerDx: Float = 0f,
+    var threeFingerDy: Float = 0f,
+    var threeFingerTriggered: Boolean = false,
     var finishedNormally: Boolean = false,
 )
 
@@ -930,38 +1051,45 @@ private class TrackpadMotionAccumulator {
     private var accX = 0f
     private var accY = 0f
     private var scrollAcc = 0f
+    private var zoomAcc = 0f
 
     fun processEvent(
         event: androidx.compose.ui.input.pointer.PointerEvent,
         session: TrackpadGestureSession,
         sensitivity: Float,
         tracker: DoubleTapDragTracker,
-        onMove: (Int, Int) -> Unit,
-        onTwoFingerTap: () -> Unit,
-        onGestureDragChange: (Boolean) -> Unit,
-        onScroll: (Int) -> Unit,
+        callbacks: TrackpadGestureCallbacks,
     ): Boolean {
         val activePointers = event.changes.count { it.pressed }
         if (activePointers > session.maxPointers) session.maxPointers = activePointers
         if (activePointers == 0) {
-            finishTrackpadGesture(event, session, tracker, onTwoFingerTap, onGestureDragChange)
+            finishTrackpadGesture(event, session, tracker, callbacks)
             return false
         }
         val pan = event.calculatePan()
-        if (activePointers >= 2) {
-            if (tracker.onCancel()) onGestureDragChange(false)
-            session.twoFingerMoved = dispatchTwoFinger(pan, session.twoFingerMoved, onScroll)
-        } else {
-            val primary = event.changes.first { it.pressed }
-            session.lastPos = primary.position
-            if (pan != Offset.Zero) {
-                val engaged = tracker.onPointerMove(
-                    primary.position,
-                    pan.getDistance(),
-                    SystemClock.elapsedRealtime(),
-                )
-                if (engaged) onGestureDragChange(true)
-                dispatchSingleFinger(pan, sensitivity, onMove)
+        when {
+            activePointers >= 3 -> {
+                if (tracker.onCancel()) callbacks.onGestureDragChange(false)
+                session.twoFingerMoved = true
+                dispatchThreeFinger(pan, session, callbacks.onThreeFingerSwipe)
+            }
+            activePointers == 2 -> {
+                if (tracker.onCancel()) callbacks.onGestureDragChange(false)
+                val zoom = event.calculateZoom()
+                session.twoFingerMoved = dispatchTwoFinger(pan, zoom, session.twoFingerMoved, callbacks)
+            }
+            else -> {
+                val primary = event.changes.first { it.pressed }
+                session.lastPos = primary.position
+                if (pan != Offset.Zero) {
+                    val engaged = tracker.onPointerMove(
+                        primary.position,
+                        pan.getDistance(),
+                        SystemClock.elapsedRealtime(),
+                    )
+                    if (engaged) callbacks.onGestureDragChange(true)
+                    dispatchSingleFinger(pan, sensitivity, callbacks.onMove)
+                }
             }
         }
         event.changes.forEach {
@@ -974,30 +1102,65 @@ private class TrackpadMotionAccumulator {
         event: androidx.compose.ui.input.pointer.PointerEvent,
         session: TrackpadGestureSession,
         tracker: DoubleTapDragTracker,
-        onTwoFingerTap: () -> Unit,
-        onGestureDragChange: (Boolean) -> Unit,
+        callbacks: TrackpadGestureCallbacks,
     ) {
         session.finishedNormally = true
-        if (session.maxPointers >= 2) {
+        zoomAcc = 0f
+        if (session.maxPointers >= 3) {
             event.changes.forEach { it.consume() }
-            if (tracker.onCancel()) onGestureDragChange(false)
-            if (!session.twoFingerMoved) onTwoFingerTap()
+            if (tracker.onCancel()) callbacks.onGestureDragChange(false)
+            return
+        }
+        if (session.maxPointers == 2) {
+            event.changes.forEach { it.consume() }
+            if (tracker.onCancel()) callbacks.onGestureDragChange(false)
+            if (!session.twoFingerMoved) callbacks.onTwoFingerTap()
             return
         }
         val upPos = event.changes.firstOrNull()?.position ?: session.lastPos
         if (tracker.onPointerUp(upPos, SystemClock.elapsedRealtime())) {
             event.changes.forEach { it.consume() }
-            onGestureDragChange(false)
+            callbacks.onGestureDragChange(false)
         }
     }
 
-    fun dispatchTwoFinger(pan: Offset, alreadyMoved: Boolean, onScroll: (Int) -> Unit): Boolean {
-        val moved = alreadyMoved || abs(pan.x) > 1f || abs(pan.y) > 1f
+    private fun dispatchThreeFinger(
+        pan: Offset,
+        session: TrackpadGestureSession,
+        onThreeFingerSwipe: (ThreeFingerDirection) -> Unit,
+    ) {
+        if (session.threeFingerTriggered) return
+        session.threeFingerDx += pan.x
+        session.threeFingerDy += pan.y
+        val dir = classifyThreeFingerSwipe(session.threeFingerDx, session.threeFingerDy, THREE_FINGER_THRESHOLD_PX)
+        if (dir != null) {
+            session.threeFingerTriggered = true
+            onThreeFingerSwipe(dir)
+        }
+    }
+
+    private fun dispatchTwoFinger(
+        pan: Offset,
+        zoom: Float,
+        alreadyMoved: Boolean,
+        callbacks: TrackpadGestureCallbacks,
+    ): Boolean {
+        val isPinch = abs(zoom - 1f) > PINCH_ZOOM_DEADZONE
+        val moved = alreadyMoved || isPinch || abs(pan.x) > 1f || abs(pan.y) > 1f
+        if (isPinch) {
+            zoomAcc += (zoom - 1f) * PINCH_ZOOM_GAIN
+            val step = zoomAcc.toInt()
+            if (step != 0) {
+                zoomAcc -= step
+                callbacks.onZoom(step)
+            }
+            return moved
+        }
         scrollAcc += pan.y * 0.14f
         val step = scrollAcc.toInt()
         if (step != 0) {
             scrollAcc -= step
-            onScroll(step)
+            callbacks.onScroll(step)
         }
         return moved
     }

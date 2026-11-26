@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="open_trackpad"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_trackpad_short"
+        android:shortcutLongLabel="@string/shortcut_trackpad_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.nuvio.remote"
+            android:targetClass="com.nuvio.remote.MainActivity">
+            <extra android:name="initial_tab" android:value="trackpad" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_screen"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_screen_short"
+        android:shortcutLongLabel="@string/shortcut_screen_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.nuvio.remote"
+            android:targetClass="com.nuvio.remote.MainActivity">
+            <extra android:name="initial_tab" android:value="screen" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="open_apps"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_apps_short"
+        android:shortcutLongLabel="@string/shortcut_apps_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.nuvio.remote"
+            android:targetClass="com.nuvio.remote.MainActivity">
+            <extra android:name="initial_tab" android:value="apps" />
+        </intent>
+    </shortcut>
+</shortcuts>

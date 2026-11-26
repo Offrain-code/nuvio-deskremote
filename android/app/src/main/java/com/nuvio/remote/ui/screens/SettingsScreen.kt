@@ -70,6 +70,7 @@ import com.nuvio.remote.ui.i18n.AppLanguage
 import com.nuvio.remote.ui.i18n.LocalAppLanguage
 import com.nuvio.remote.ui.i18n.ResolvedLanguage
 import com.nuvio.remote.ui.i18n.l10n
+import com.nuvio.remote.ui.theme.AppThemeMode
 import com.nuvio.remote.ui.theme.GlassVariant
 import com.nuvio.remote.ui.theme.LocalHapticsEnabled
 import com.nuvio.remote.ui.theme.LocalNuvioColors
@@ -97,6 +98,8 @@ fun SettingsScreen(
     onDisconnect: () -> Unit = {},
     appLanguage: AppLanguage,
     onAppLanguageChange: (AppLanguage) -> Unit,
+    appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    onAppThemeModeChange: (AppThemeMode) -> Unit = {},
     hapticsEnabled: Boolean,
     onHapticsChange: (Boolean) -> Unit,
     defaultProfile: ScreenProfile,
@@ -198,6 +201,8 @@ fun SettingsScreen(
             InteractionAndScreenCard(
                 appLanguage = appLanguage,
                 onAppLanguageChange = onAppLanguageChange,
+                appThemeMode = appThemeMode,
+                onAppThemeModeChange = onAppThemeModeChange,
                 hapticsEnabled = hapticsEnabled,
                 onHapticsChange = onHapticsChange,
                 defaultProfile = defaultProfile,
@@ -814,6 +819,8 @@ private fun RemoteAccessCard(tunnelUrl: String?, onConnectRemote: (String) -> Un
 private fun InteractionAndScreenCard(
     appLanguage: AppLanguage,
     onAppLanguageChange: (AppLanguage) -> Unit,
+    appThemeMode: AppThemeMode = AppThemeMode.SYSTEM,
+    onAppThemeModeChange: (AppThemeMode) -> Unit = {},
     hapticsEnabled: Boolean,
     onHapticsChange: (Boolean) -> Unit,
     defaultProfile: ScreenProfile,
@@ -836,6 +843,18 @@ private fun InteractionAndScreenCard(
             selectedLanguage = appLanguage,
             hapticsEnabled = hapticsEnabled,
             onSelectLanguage = onAppLanguageChange,
+        )
+
+        NuvioText(
+            text = l10n("Appearance:", "Aparência:"),
+            style = NuvioTypography.KeyShortcutBadge,
+            color = scheme.textSecondary,
+        )
+
+        ThemeSelectorRow(
+            selectedTheme = appThemeMode,
+            hapticsEnabled = hapticsEnabled,
+            onSelectTheme = onAppThemeModeChange,
         )
 
         Row(
@@ -977,12 +996,89 @@ private fun InteractionAndScreenCard(
 
         NuvioText(
             text = l10n(
-                "Nuvio DeskRemote v$installedVersion • Appearance follows your system light or dark theme.",
-                "Nuvio DeskRemote v$installedVersion • Aparência acompanha o tema claro ou escuro do sistema.",
+                "Nuvio DeskRemote v$installedVersion • Liquid Glass optical theme.",
+                "Nuvio DeskRemote v$installedVersion • Tema óptico Liquid Glass.",
             ),
             style = NuvioTypography.KeyShortcutBadge,
             color = scheme.textMuted,
         )
+    }
+}
+
+@Composable
+private fun ThemeSelectorRow(
+    selectedTheme: AppThemeMode,
+    hapticsEnabled: Boolean,
+    onSelectTheme: (AppThemeMode) -> Unit,
+) {
+    val context = LocalContext.current
+    val scheme = LocalNuvioColors.current
+    val options = listOf(
+        AppThemeMode.SYSTEM to l10n("System", "Sistema"),
+        AppThemeMode.DARK to l10n("Dark", "Escuro"),
+        AppThemeMode.LIGHT to l10n("Light", "Claro"),
+    )
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(scheme.contentCellSurface)
+                .border(1.dp, scheme.contentBorder, RoundedCornerShape(14.dp)),
+        )
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            options.forEach { (theme, label) ->
+                val selected = theme == selectedTheme
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                        ) {
+                            if (hapticsEnabled) Haptics.tab(context)
+                            onSelectTheme(theme)
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (selected) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 3.dp)
+                                .height(32.dp)
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(
+                                    Brush.verticalGradient(
+                                        listOf(scheme.pillActiveBgTop, scheme.pillActiveBgBottom),
+                                    ),
+                                ),
+                        )
+                    }
+                    NuvioText(
+                        text = label,
+                        style = NuvioTypography.KeyShortcutBadge.copy(
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        ),
+                        color = if (selected) scheme.pillActiveFg else scheme.textSecondary,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
     }
 }
 

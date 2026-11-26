@@ -78,6 +78,7 @@ import com.nuvio.remote.connection.ScreenProfile
 import com.nuvio.remote.data.AppPrefs
 import com.nuvio.remote.ui.components.Haptics
 import com.nuvio.remote.ui.components.NuvioText
+import com.nuvio.remote.ui.components.PcPowerDialog
 import com.nuvio.remote.ui.components.RemoteTextInputBar
 import com.nuvio.remote.ui.components.TapSnapState
 import com.nuvio.remote.ui.i18n.l10n
@@ -202,6 +203,8 @@ fun ScreenShareScreen(
         },
     )
 
+    var showPowerDialog by remember { mutableStateOf(false) }
+
     val moreCallbacks = buildMorePcCallbacks(
         conn = conn,
         appPrefs = appPrefs,
@@ -212,6 +215,7 @@ fun ScreenShareScreen(
         onDragHoldChange = { uiState.dragHoldActive = it },
         onFeedback = { uiState.feedbackMessage = it },
         onPasteToPc = { uiState.pasteClipboardToPc(context, conn) },
+        onOpenPowerMenu = { showPowerDialog = true },
     )
 
     val radialCallbacks = buildRadialDockCallbacks(
@@ -291,6 +295,13 @@ fun ScreenShareScreen(
             },
             onReconnect = { uiState.reconnectTick++ },
             modifier = modifier,
+        )
+    }
+
+    if (showPowerDialog) {
+        PcPowerDialog(
+            onAction = { action -> conn.sendWindow(action) },
+            onDismiss = { showPowerDialog = false },
         )
     }
 }
@@ -1399,6 +1410,7 @@ private fun buildMorePcCallbacks(
     onDragHoldChange: (Boolean) -> Unit,
     onFeedback: (String) -> Unit,
     onPasteToPc: () -> Unit,
+    onOpenPowerMenu: () -> Unit,
 ): MorePcMenuCallbacks = MorePcMenuCallbacks(
     onPasteToPc = onPasteToPc,
     onCopyFromPc = { conn.requestClipboardGet() },
@@ -1426,7 +1438,7 @@ private fun buildMorePcCallbacks(
     onMutePc = { conn.sendWindow("mute_toggle") },
     onToggleWindowFullscreen = { conn.sendKey("F11") },
     onSendEscape = { conn.sendKey("Escape") },
-    onSuspendDisplay = { conn.sendWindow("suspend_display") },
+    onSuspendDisplay = onOpenPowerMenu,
 )
 
 private fun buildRadialDockCallbacks(

@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -91,6 +92,7 @@ import com.nuvio.remote.ui.screens.ScreenShareScreen
 import com.nuvio.remote.ui.screens.SettingsScreen
 import com.nuvio.remote.ui.screens.TonightOverlaySheet
 import com.nuvio.remote.ui.screens.TrackpadScreen
+import com.nuvio.remote.ui.theme.AppThemeMode
 import com.nuvio.remote.ui.theme.GlassVariant
 import com.nuvio.remote.ui.theme.LocalHapticsEnabled
 import com.nuvio.remote.ui.theme.LocalNuvioColors
@@ -158,6 +160,10 @@ fun NuvioRemoteRoot(
     var activeAppsSubTab by rememberSaveable { mutableStateOf(AppsSubTab.WATCH) }
     var activeMonitor by remember { mutableIntStateOf(appPrefs.screenMonitor.coerceIn(1, 2)) }
     var curtainActive by remember { mutableStateOf(false) }
+    var appThemeMode by remember { mutableStateOf(AppThemeMode.fromWire(appPrefs.appThemeMode)) }
+    var trackpadLeftHanded by remember { mutableStateOf(appPrefs.trackpadLeftHanded) }
+    var remoteSwipeMode by remember { mutableStateOf(appPrefs.remoteSwipeMode) }
+    val resolvedDarkTheme = resolveDarkTheme(appThemeMode, isSystemInDarkTheme())
 
     LaunchedEffect(liveWakeInfo) {
         liveWakeInfo?.let { appPrefs.saveWakeInfo(it) }
@@ -189,6 +195,7 @@ fun NuvioRemoteRoot(
 
     NuvioGlassTheme(
         hapticsEnabled = hapticsEnabled,
+        darkTheme = resolvedDarkTheme,
         backdropState = backdropState,
         resolvedLanguage = resolvedLanguage,
     ) {
@@ -285,6 +292,21 @@ fun NuvioRemoteRoot(
                                 textInputFocusTick = textInputFocusTick,
                                 appLanguage = appLanguage,
                                 onAppLanguageChange = onAppLanguageChange,
+                                appThemeMode = appThemeMode,
+                                onAppThemeModeChange = { nextTheme ->
+                                    appThemeMode = nextTheme
+                                    appPrefs.appThemeMode = nextTheme.wire
+                                },
+                                trackpadLeftHanded = trackpadLeftHanded,
+                                onTrackpadLeftHandedChange = { left ->
+                                    trackpadLeftHanded = left
+                                    appPrefs.trackpadLeftHanded = left
+                                },
+                                remoteSwipeMode = remoteSwipeMode,
+                                onRemoteSwipeModeChange = { swipe ->
+                                    remoteSwipeMode = swipe
+                                    appPrefs.remoteSwipeMode = swipe
+                                },
                                 hapticsEnabled = hapticsEnabled,
                                 onHapticsChange = onHapticsChange,
                                 defaultProfile = defaultProfile,
@@ -327,6 +349,12 @@ fun NuvioRemoteRoot(
             }
         }
     }
+}
+
+private fun resolveDarkTheme(mode: AppThemeMode, systemDark: Boolean): Boolean = when (mode) {
+    AppThemeMode.SYSTEM -> systemDark
+    AppThemeMode.DARK -> true
+    AppThemeMode.LIGHT -> false
 }
 
 private fun syncBackStackForTab(backStack: MutableList<NuvioRoute>, tab: NuvioTab) {
@@ -384,6 +412,12 @@ private fun NuvioRouteHost(
     textInputFocusTick: Long,
     appLanguage: AppLanguage,
     onAppLanguageChange: (AppLanguage) -> Unit,
+    appThemeMode: AppThemeMode,
+    onAppThemeModeChange: (AppThemeMode) -> Unit,
+    trackpadLeftHanded: Boolean,
+    onTrackpadLeftHandedChange: (Boolean) -> Unit,
+    remoteSwipeMode: Boolean,
+    onRemoteSwipeModeChange: (Boolean) -> Unit,
     hapticsEnabled: Boolean,
     onHapticsChange: (Boolean) -> Unit,
     defaultProfile: ScreenProfile,
@@ -410,11 +444,15 @@ private fun NuvioRouteHost(
                 onSelectState = { conn.sendSetState(it) },
                 onOpenAppsTab = { onNavigateTab(NuvioTab.APPS) },
                 onOpenCinemaMode = onOpenCinemaMode,
+                swipePadMode = remoteSwipeMode,
+                onSwipePadModeChange = onRemoteSwipeModeChange,
             )
             NuvioRoute.Trackpad -> TrackpadScreen(
                 conn = conn,
                 initialSensitivity = appPrefs.mouseSensitivity,
                 onSensitivityChange = { appPrefs.mouseSensitivity = it },
+                leftHanded = trackpadLeftHanded,
+                onLeftHandedChange = onTrackpadLeftHandedChange,
             )
             NuvioRoute.Screen -> ScreenShareScreen(
                 conn = conn,
@@ -455,6 +493,8 @@ private fun NuvioRouteHost(
                     onDisconnect = { conn.disconnect() },
                     appLanguage = appLanguage,
                     onAppLanguageChange = onAppLanguageChange,
+                    appThemeMode = appThemeMode,
+                    onAppThemeModeChange = onAppThemeModeChange,
                     hapticsEnabled = hapticsEnabled,
                     onHapticsChange = onHapticsChange,
                     defaultProfile = defaultProfile,

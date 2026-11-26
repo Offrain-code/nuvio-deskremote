@@ -16,6 +16,21 @@ class AppPrefs(context: Context) {
         get() = sp.getString(K_LANGUAGE, "system") ?: "system"
         set(v) = sp.edit().putString(K_LANGUAGE, v).apply()
 
+    /** Appearance theme override wire value ("system", "dark", or "light"). */
+    var appThemeMode: String
+        get() = sp.getString(K_THEME_MODE, "system") ?: "system"
+        set(v) = sp.edit().putString(K_THEME_MODE, v).apply()
+
+    /** true = place Trackpad vertical scroll rail on the left side for left-handed ergonomics. */
+    var trackpadLeftHanded: Boolean
+        get() = sp.getBoolean(K_TRACKPAD_LEFT_HANDED, false)
+        set(v) = sp.edit().putBoolean(K_TRACKPAD_LEFT_HANDED, v).apply()
+
+    /** true = show Swipe Pad gesture surface instead of classic D-Pad ring on the Remote tab. */
+    var remoteSwipeMode: Boolean
+        get() = sp.getBoolean(K_REMOTE_SWIPE_MODE, false)
+        set(v) = sp.edit().putBoolean(K_REMOTE_SWIPE_MODE, v).apply()
+
     var mouseSensitivity: Float
         get() = sp.getFloat(K_SENS, 1.6f)
         set(v) = sp.edit().putFloat(K_SENS, v).apply()
@@ -97,6 +112,9 @@ class AppPrefs(context: Context) {
     companion object {
         const val DEFAULT_TUNNEL = ""
         const val K_LANGUAGE = "app_language"
+        const val K_THEME_MODE = "app_theme_mode"
+        const val K_TRACKPAD_LEFT_HANDED = "trackpad_left_handed"
+        const val K_REMOTE_SWIPE_MODE = "remote_swipe_mode"
         const val K_SENS = "mouse_sensitivity"
         const val K_HAPTICS = "haptics_enabled"
         const val K_HAPTIC_STRENGTH = "haptic_strength"

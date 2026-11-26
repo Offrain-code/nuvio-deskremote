@@ -206,6 +206,9 @@ private val SPECIAL_KEYS_SCROLL_THRESHOLD = 352.dp
 
 @Composable
 private fun SpecialKeysSection(isClear: Boolean, onSpecialKey: (String) -> Unit) {
+    val reducedMotion = LocalReducedMotion.current
+    var showExtraKeys by remember { mutableStateOf(false) }
+
     Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
         BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
             val useHorizontalScroll = maxWidth < SPECIAL_KEYS_SCROLL_THRESHOLD
@@ -234,12 +237,98 @@ private fun SpecialKeysSection(isClear: Boolean, onSpecialKey: (String) -> Unit)
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             SpecialKeyPill("Del", Modifier.weight(1f), isClear) { onSpecialKey("Delete") }
-            SpecialKeyPill("▲", Modifier.weight(0.9f), isClear) { onSpecialKey("Up") }
-            SpecialKeyPill("▼", Modifier.weight(0.9f), isClear) { onSpecialKey("Down") }
-            SpecialKeyPill(l10n("Space", "Espaço"), Modifier.weight(1.7f), isClear) { onSpecialKey("Space") }
-            SpecialKeyPill("Enter", Modifier.weight(1.15f), isClear) { onSpecialKey("Enter") }
+            SpecialKeyPill("▲", Modifier.weight(0.85f), isClear) { onSpecialKey("Up") }
+            SpecialKeyPill("▼", Modifier.weight(0.85f), isClear) { onSpecialKey("Down") }
+            SpecialKeyPill(l10n("Space", "Espaço"), Modifier.weight(1.5f), isClear) { onSpecialKey("Space") }
+            SpecialKeyPill("Enter", Modifier.weight(1.1f), isClear) { onSpecialKey("Enter") }
+            SpecialKeyPill(
+                label = if (showExtraKeys) l10n("Less", "Menos") else l10n("More", "Mais"),
+                modifier = Modifier.weight(1f),
+                isClear = isClear,
+                highlighted = showExtraKeys,
+            ) {
+                showExtraKeys = !showExtraKeys
+            }
+        }
+        AnimatedVisibility(
+            visible = showExtraKeys,
+            enter = NuvioMotion.morphEnter(reducedMotion),
+            exit = NuvioMotion.morphExit(reducedMotion),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    SpecialKeyPill("Win+D", Modifier.weight(1f), isClear) { onSpecialKey("WinD") }
+                    SpecialKeyPill("Win+Tab", Modifier.weight(1f), isClear) { onSpecialKey("WinTab") }
+                    SpecialKeyPill("Ctrl+Z", Modifier.weight(1f), isClear) { onSpecialKey("CtrlZ") }
+                    SpecialKeyPill("Ctrl+W", Modifier.weight(1f), isClear) { onSpecialKey("CtrlW") }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    SpecialKeyPill("F5", Modifier.weight(0.85f), isClear) { onSpecialKey("F5") }
+                    SpecialKeyPill("Ctrl+Shift+Esc", Modifier.weight(1.45f), isClear) { onSpecialKey("CtrlShiftEsc") }
+                    SpecialKeyPill(
+                        label = "Alt+F4",
+                        modifier = Modifier.weight(0.90f),
+                        isClear = isClear,
+                        danger = true,
+                    ) {
+                        onSpecialKey("AltF4")
+                    }
+                }
+            }
         }
     }
+}
+
+private data class SpecialKeyVisuals(
+    val bgColor: Color,
+    val borderColor: Color,
+    val fgColor: Color,
+    val shadow: Shadow?,
+)
+
+private fun resolveSpecialKeyVisuals(
+    scheme: com.nuvio.remote.ui.theme.NuvioColorScheme,
+    isClear: Boolean,
+    highlighted: Boolean,
+    danger: Boolean,
+    pressed: Boolean,
+): SpecialKeyVisuals {
+    if (highlighted) {
+        return SpecialKeyVisuals(
+            bgColor = if (isClear) scheme.clearPillActiveBgTop else scheme.pillActiveBgTop,
+            borderColor = Color.Transparent,
+            fgColor = if (isClear) scheme.clearPillActiveFg else scheme.pillActiveFg,
+            shadow = null,
+        )
+    }
+    if (danger) {
+        return SpecialKeyVisuals(
+            bgColor = scheme.statusError.copy(alpha = if (pressed) 0.24f else 0.14f),
+            borderColor = scheme.statusError.copy(alpha = 0.65f),
+            fgColor = scheme.statusError,
+            shadow = null,
+        )
+    }
+    if (isClear) {
+        return SpecialKeyVisuals(
+            bgColor = if (pressed) Color.White.copy(alpha = 0.22f) else Color.Black.copy(alpha = 0.28f),
+            borderColor = Color.White.copy(alpha = 0.22f),
+            fgColor = scheme.clearOverlayText,
+            shadow = ClearContentShadow,
+        )
+    }
+    return SpecialKeyVisuals(
+        bgColor = if (pressed) scheme.contentCellPressed else scheme.contentCellSurface,
+        borderColor = scheme.contentBorder,
+        fgColor = scheme.textPrimary,
+        shadow = null,
+    )
 }
 
 @Composable
@@ -247,6 +336,8 @@ private fun SpecialKeyPill(
     label: String,
     modifier: Modifier = Modifier,
     isClear: Boolean = false,
+    highlighted: Boolean = false,
+    danger: Boolean = false,
     onClick: () -> Unit,
 ) {
     val scheme = LocalNuvioColors.current
@@ -258,15 +349,7 @@ private fun SpecialKeyPill(
         animationSpec = NuvioMotion.snappyPressSpring(reducedMotion),
         label = "special_key_scale",
     )
-    val bgColor = when {
-        isClear && pressed -> Color.White.copy(alpha = 0.22f)
-        isClear -> Color.Black.copy(alpha = 0.28f)
-        pressed -> scheme.contentCellPressed
-        else -> scheme.contentCellSurface
-    }
-    val borderColor = if (isClear) Color.White.copy(alpha = 0.22f) else scheme.contentBorder
-    val fgColor = if (isClear) scheme.clearOverlayText else scheme.textPrimary
-    val shadow: Shadow? = if (isClear) ClearContentShadow else null
+    val visuals = resolveSpecialKeyVisuals(scheme, isClear, highlighted, danger, pressed)
 
     Box(
         modifier = modifier
@@ -283,16 +366,16 @@ private fun SpecialKeyPill(
                     scaleY = scale
                 }
                 .clip(RoundedCornerShape(10.dp))
-                .background(bgColor)
-                .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+                .background(visuals.bgColor)
+                .border(1.dp, visuals.borderColor, RoundedCornerShape(10.dp))
                 .padding(horizontal = 2.dp),
             contentAlignment = Alignment.Center,
         ) {
             NuvioText(
                 text = label,
                 style = NuvioTypography.KeyShortcutBadge.copy(fontSize = 10.sp),
-                color = fgColor,
-                shadow = shadow,
+                color = visuals.fgColor,
+                shadow = visuals.shadow,
                 maxLines = 1,
                 softWrap = false,
                 overflow = TextOverflow.Ellipsis,

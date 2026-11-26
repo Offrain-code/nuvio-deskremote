@@ -1,6 +1,7 @@
 package com.nuvio.remote
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
@@ -32,6 +33,7 @@ import com.nuvio.remote.ui.i18n.AppLanguage
 import com.nuvio.remote.ui.i18n.AppLocaleState
 import com.nuvio.remote.ui.i18n.resolveAppLanguage
 import com.nuvio.remote.webrtc.ScreenStreamController
+import com.nuvio.remote.widget.NuvioWidgetUpdater
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
 import kotlinx.coroutines.cancel
@@ -55,6 +57,15 @@ class MainActivity : ComponentActivity() {
     private lateinit var wifiLatencyLock: WifiLatencyLock
     private var activeTab: NuvioTab = NuvioTab.REMOTE
     private val activeTabFlow = MutableStateFlow(NuvioTab.REMOTE)
+    private val shortcutTabFlow = MutableStateFlow<NuvioTab?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        resolveTabFromShortcutExtra(intent.getStringExtra(EXTRA_INITIAL_TAB))?.let {
+            shortcutTabFlow.value = it
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
@@ -67,11 +78,24 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val initialTab = remember {
-                if (!pairing.isPaired() && resolveInitialHost().isBlank()) NuvioTab.SETTINGS else NuvioTab.REMOTE
+                val fromShortcut = resolveTabFromShortcutExtra(intent?.getStringExtra(EXTRA_INITIAL_TAB))
+                when {
+                    fromShortcut != null -> fromShortcut
+                    !pairing.isPaired() && resolveInitialHost().isBlank() -> NuvioTab.SETTINGS
+                    else -> NuvioTab.REMOTE
+                }
             }
             var tab by remember { mutableStateOf(initialTab) }
             activeTab = tab
             LaunchedEffect(tab) { activeTabFlow.value = tab }
+            LaunchedEffect(Unit) {
+                shortcutTabFlow.collect { requested ->
+                    if (requested != null) {
+                        tab = requested
+                        shortcutTabFlow.value = null
+                    }
+                }
+            }
             var hapticsEnabled by remember { mutableStateOf(appPrefs.hapticsEnabled) }
             var appLanguage by remember { mutableStateOf(AppLanguage.fromWire(appPrefs.appLanguage)) }
             val resolvedLanguage = resolveAppLanguage(appLanguage)
@@ -168,6 +192,20 @@ class MainActivity : ComponentActivity() {
         scope.launch {
             conn.bridge.nowPlaying.collect { state ->
                 NowPlayingMediaService.sync(this@MainActivity, state)
+                NuvioWidgetUpdater.syncFromApp(
+                    context = this@MainActivity,
+                    online = conn.connState.value is ConnState.Connected,
+                    nowPlaying = state,
+                )
+            }
+        }
+        scope.launch {
+            conn.connState.collect { state ->
+                NuvioWidgetUpdater.syncFromApp(
+                    context = this@MainActivity,
+                    online = state is ConnState.Connected,
+                    nowPlaying = conn.bridge.nowPlaying.value,
+                )
             }
         }
     }
@@ -298,6 +336,16 @@ class MainActivity : ComponentActivity() {
         private const val DEFAULT_HOST = ""
         private const val DEFAULT_PORT = 8787
         private const val REQ_POST_NOTIFICATIONS = 1001
+        private const val EXTRA_INITIAL_TAB = "initial_tab"
+
+        internal fun resolveTabFromShortcutExtra(extra: String?): NuvioTab? = when (extra?.lowercase()) {
+            "remote" -> NuvioTab.REMOTE
+            "trackpad" -> NuvioTab.TRACKPAD
+            "screen" -> NuvioTab.SCREEN
+            "apps" -> NuvioTab.APPS
+            "settings" -> NuvioTab.SETTINGS
+            else -> null
+        }
 
         /**
          * Prevents zero-click session token theft via spoofed UDP discovery replies on foreign Wi-Fi.

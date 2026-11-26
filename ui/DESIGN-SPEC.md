@@ -728,6 +728,119 @@ Para garantir **contraste WCAG AA (`>= 4.5:1`)** em todas as superfícies opacas
 
 ---
 
+### 5.13 Melhorias de UI/UX Pós-Pesquisa de Mercado (v0.5.4 — Fase 1 e Fase 2)
+
+Esta seção especifica as melhorias visuais e funcionais da **v0.5.4**, divididas entre **Fase 1** (ganhos rápidos de controle do PC, atalhos e ergonomia) e **Fase 2** (navegação por gestos `Swipe Pad`, `Mini-Player` persistente 100% opaco na aba `Apps` e `Widgets` de Tela Inicial do Android `4×1` / `4×2`).
+
+---
+
+#### 5.13.1 Fase 1A — Folha Flutuante "Energia do PC" (`PcPowerSheet` — Exclusiva do Modo PC)
+
+- **Escopo Estrito (Modo PC):** acessível exclusivamente nas abas **`Trackpad`** (pílula `Energia / Power` no topo ao lado de `Alt+Tab` e `Cortina`, ou chip `Energia` na barra rápida) e **`Tela`** (botão `Energia PC / PC Power` no card de atalhos em modo retrato e no menu `Mais PC` em tela cheia). **Proibido** exibir no Modo Nuvio (`Remote` e `Apps`).
+- **Regra de Camada Liquid Glass:**
+  - **Scrim de Fundo:** `rgba(5, 7, 11, 0.58)` no escuro / `rgba(15, 23, 42, 0.42)` no claro (toque fora fecha a folha e cancela qualquer confirmação pendente).
+  - **Container Externo (`PcPowerModalGlass`):** única camada com **`GlassVariant.REGULAR` (`elevated = true`)**, `width = 328.dp` (`fillMaxWidth()` com `paddingHorizontal = 16.dp`), `RoundedCornerShape(24.dp)`, `padding = 16.dp`.
+  - **Células Internas de Ação e Barra de Confirmação:** **100% opacas** (`ContentCellSurface` `#191D28` no escuro / `#F3F6FB` no claro e `ContentCardSurface` `#13161E` / `#FFFFFF`), `border = 1.dp ContentBorder`, `RoundedCornerShape(14.dp)`, **zero vidro dentro de vidro**.
+- **Ações e Fluxo de Confirmação Obrigatória em 2 Toques (Prevenção de Toque Acidental):**
+
+| Ação (PT-BR / EN) | Comando Servidor | Comportamento de Segurança | Tokens Visuais & Hitbox (`>= 48.dp`) |
+| :--- | :--- | :--- | :--- |
+| **1. `Bloquear` / `Lock PC`** | `lock_workstation` (`Win+L`) | **Ação não-destrutiva (1 toque):** bloqueia a sessão do Windows imediatamente e fecha a folha. | Célula opaca `ContentCellSurface`,altura `54.dp` (`>= 48.dp`), ícone cadeado, badge `"Imediato / Instant"`. |
+| **2. `Suspender` / `Sleep`** | `sleep_pc` | **Confirmação obrigatória (2º toque):** o 1º toque seleciona/arma a ação (`armedAction = SLEEP`); exige 2º toque na própria célula ou no botão primário **`Confirmar Suspender / Confirm Sleep`** em até `5s`. | Estado armado: borda `statusWarning` (`#FBBF24` escuro / `#B45309` claro, `1.5.dp`), badge `"Confirmar (2º toque)"`. |
+| **3. `Reiniciar` / `Restart`** | `restart_pc` | **Ação destrutiva — Confirmação obrigatória:** o 1º toque arma `armedAction = RESTART` e revela/ativa a faixa de confirmação explícita na base da folha (**`Cancelar`** vs **`Reiniciar agora`**). | Estado armado: borda `statusWarning` (`1.5.dp`), texto de aviso `"Fechará os apps abertos no PC"`. |
+| **4. `Desligar` / `Shut down`** | `shutdown_pc` | **Ação destrutiva crítica — Confirmação obrigatória:** o 1º toque arma `armedAction = SHUTDOWN` com destaque `statusError` (`#F87171` escuro / `#B91C1C` claro) e exige confirmação explícita no botão **`Desligar agora / Shut down now`** (`>= 48.dp × 48.dp`). | Estado armado: borda `statusError` (`1.5.dp`), botão de confirmação com fundo `statusError` e texto contrastante (`>= 5.6:1` AA). |
+
+---
+
+#### 5.13.2 Fase 1B — Expansão de Atalhos (`Mais ▾`) no `RemoteTextInputBar` (Modo PC)
+
+- **Contexto:** na barra flutuante de teclado do Modo PC (`Trackpad` e `Tela`), o usuário precisa acessar rapidamente 7 atalhos nativos já suportados pelo servidor Windows (`Win+D`, `Win+Tab`, `Alt+F4`, `Ctrl+Z`, `Ctrl+W`, `Ctrl+Shift+Esc`, `F5`) sem comprimir nenhuma tecla abaixo de `48.dp × 48.dp` em telas de `360.dp`.
+- **Geometria e Layout sem Truncamento em `360.dp` (`316.dp` úteis internos com `paddingHorizontal = 6.dp`):**
+  1. **Linha 1 (Fixa — 6 teclas):** `ESC`, `TAB`, `ALT+TAB`, `WIN`, `CTRL+C`, `CTRL+V` (`spacedBy(4.dp)`, `weight(1f)` -> `49.3.dp × 48.dp` cada).
+  2. **Linha 2 (Principal + Chip `Mais ▾` — 6 teclas):**
+     - `Del` (`weight(0.95f)`), `▲` (`weight(0.85f)`), `▼` (`weight(0.85f)`), `Espaço / Space` (`weight(1.35f)`), `Enter` (`weight(1.05f)`), e o novo chip **`Mais ▾` / `More ▾`** (quando fechado) ou **`Menos ▴` / `Less ▴`** (quando aberto), com `weight(0.95f)` e **`defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`**.
+     - Quando ativo (`moreShortcutsExpanded == true`), o chip `Menos ▴` recebe destaque `pillActiveBgTop -> pillActiveBgBottom` (`pillActiveFg`).
+  3. **Gaveta Expandida (`AnimatedVisibility` com `NuvioMotion.morphEnter` — 2 sub-linhas opacas de `48.dp`):**
+     - **Sub-linha 3A (4 teclas, `spacedBy(4.dp)`):**
+       - `Win+D` (`weight(1f)` = `76.dp × 48.dp`) — Mostrar área de trabalho
+       - `Win+Tab` (`weight(1f)` = `76.dp × 48.dp`) — Visão de tarefas
+       - `Ctrl+Z` (`weight(1f)` = `76.dp × 48.dp`) — Desfazer
+       - `Ctrl+W` (`weight(1f)` = `76.dp × 48.dp`) — Fechar aba
+     - **Sub-linha 3B (3 teclas, `spacedBy(4.dp)`):**
+       - `F5` (`weight(0.85f)` = `84.dp × 48.dp`) — Atualizar
+       - `Ctrl+Shift+Esc` (`weight(1.45f)` = `143.dp × 48.dp`) — Gerenciador de Tarefas (rótulo completo sem truncar em `10.sp` Bold)
+       - `Alt+F4` (`weight(0.90f)` = `89.dp × 48.dp`) — Fechar janela (borda e texto em `statusError` sutil para diferenciar ação de fechamento).
+
+---
+
+#### 5.13.3 Fase 1C — Seletor de Tema (`Sistema | Escuro | Claro`) em `Ajustes` e Modo Canhoto no `Trackpad`
+
+1. **Seletor de Tema (`ThemeSelectorRow`) em `SettingsScreen.kt` (Card `INTERAÇÃO E TELA`):**
+   - **Opções (`AppThemeMode`):** **`Sistema` (`System`)** · **`Escuro` (`Dark`)** · **`Claro` (`Light`)**.
+   - **Geometria Concêntrica (Zero Vidro Aninhado):** idêntica a `LanguageSelectorRow`:
+     - `Box` externo com `Modifier.fillMaxWidth().height(48.dp)`.
+     - Trilha visual opaca de fundo: `height = 38.dp`, `RoundedCornerShape(14.dp)`, `background(scheme.contentCellSurface)`, `border(1.dp, scheme.contentBorder)`.
+     - 3 slots clicáveis (`Modifier.weight(1f).fillMaxHeight()`, `>= 98.dp × 48.dp` cada) com pílula ativa interna `height = 32.dp`, `RoundedCornerShape(11.dp)`, gradiente `pillActiveBgTop -> pillActiveBgBottom` e texto `pillActiveFg` (`11.sp` Bold).
+2. **Toggle Modo Canhoto (`leftHandedScroll`) em `TrackpadScreen.kt`:**
+   - **Problema resolvido:** usuários canhotos que seguram o celular com a mão esquerda precisam esticar o polegar até a borda direita para usar a `TrackpadScrollRail` (`ROLAR`).
+   - **Controle de Ativação (`>= 48.dp × 48.dp`):**
+     - No cabeçalho/rodapé do `TrackpadScreen` (integrado ao `TrackpadSensitivityCard` ou barra de topo do Trackpad como chip/toggle **`Canhoto: Trilha à Esq.` / `Left-hand: Scroll Left`** com `NuvioGlassSwitch` ou pílula `Trilha: Esq | Dir`, `minHeight = 48.dp`).
+   - **Comportamento de Layout no `Row` Central do Trackpad:**
+     - `leftHandedScroll == false` (Padrão Destro): `[ TrackpadTouchSurface (weight 1f) ] + 8.dp + [ TrackpadScrollRail (48.dp) ]`.
+     - `leftHandedScroll == true` (Modo Canhoto): **`[ TrackpadScrollRail (48.dp) ] + 8.dp + [ TrackpadTouchSurface (weight 1f) ]`**.
+
+---
+
+#### 5.13.4 Fase 2A — Alternador `D-Pad | Swipe Pad` (Toque Gestual) na Aba `Remote` (Modo Nuvio)
+
+- **Escopo Estrito (Modo Nuvio):** exclusivo da aba **`Remote`** (`Navegar` e `Player`). Mantém os rockers laterais `VOL` e `CH`, os 4 satélites (`Voltar`, `Início`, `Detalhes`, `Tela cheia`) e o `DynamicContextDock` inferior 100% intactos.
+- **1. Alternador Discreto de Modo (`RemotePadModeToggle`: `[ D-Pad | Gestos ]` / `[ D-Pad | Swipe ]`):**
+  - Posicionado na linha superior do cockpit (`sat-row`), centralizado entre o satélite esquerdo (`Voltar`) e o satélite direito (`Início`).
+  - **Geometria (`>= 48.dp × 48.dp` por opção):**
+    - Largura total `148.dp`, altura de toque `48.dp` (`2` botões de `74.dp × 48.dp` cada).
+    - Trilha visual concêntrica de `32.dp` de altura (`paddingVertical = 8.dp`) em `GlassVariant.REGULAR` (ou superfície opaca `ContentCellSurface` com borda `ContentBorder`), contendo a pílula ativa de `26.dp` de altura em `pillActiveBgTop -> pillActiveBgBottom` (`pillActiveFg`, `11.sp` Bold).
+- **2. Superfície Tátil Gestual (`PrecisionSwipePad`):**
+  - Ocupa exatamente o mesmo box central do `PrecisionDPadRing` (`size = metrics.dpadDiameter`, `156.dp` a `186.dp`), eliminando qualquer relayout dos rockers `VOL`/`CH` ao alternar entre `D-Pad` e `Gestos`.
+  - **Formato e Camada:** squircle superelíptico `RoundedCornerShape(46.dp)` com `Modifier.nuvioGlass(shape = RoundedCornerShape(46.dp), variant = GlassVariant.REGULAR, elevated = true)`, borda especular `glassRim` e matriz central de micro-pontos táteis (`step = 18.dp`, `radius = 1.1.dp`) + 4 chevrons direcionais discretos nas bordas (`opacity = 0.45f`, acendendo em `1.0f` na direção do swipe).
+  - **Mapa de Gestos e Feedback Háptico:**
+    - **Deslizar (`↑ / ↓ / ← / →`, limiar `24.dp`):** envia `Up`, `Down`, `Left`, `Right` (`Haptics.scroll`); manter o dedo segurado após o swipe aciona repetição contínua a cada `125ms`.
+    - **Toque simples (`1 tap`):** envia `OK / Enter` (`Haptics.ok`) com pulso visual no anel central.
+    - **Toque longo (`Long press 450ms`):** envia `Voltar / Back` (`Haptics.toggle`).
+
+---
+
+#### 5.13.5 Fase 2B — Mini-Player Persistente na Aba `Apps` (`AppsPersistentMiniPlayer` — 100% Opaco)
+
+- **Regra Fundamental de Camada (Zero Vidro):** como o `Mini-Player` exibe metadados de mídia e convive logo acima do dock inferior de abas (que já é `GlassVariant.REGULAR`), o Mini-Player **NUNCA usa vidro**. Ele utiliza superfície **100% opaca `ContentCardSurface`** (`#13161E` no escuro / `#FFFFFF` no claro) com borda `1.dp` em `ctxPlayer.copy(alpha = 0.38f)` (ou `ContentBorder`) e sombra sólida de separação.
+- **Condição de Exibição:** visível na base da aba **`Apps`** (`Assistir`, `Música` e `Módulos`) sempre que `nowPlaying != null` (vídeo ou música em reprodução/pausa no Nuvio HTPC). O `LazyColumn` da aba `Apps` recebe `bottomPadding` adicional de `68.dp` para que nenhum card da biblioteca fique encoberto.
+- **Geometria e Elementos (`height = 58.dp`, `RoundedCornerShape(18.dp)`, `paddingHorizontal = 10.dp`):**
+  1. **Zona Principal de Navegação (`Modifier.weight(1f).defaultMinSize(minHeight = 48.dp).clickable { onOpenRemotePlayer() }`):**
+     - **Miniatura Opaca (`38.dp × 38.dp`, `RoundedCornerShape(10.dp)`):** pôster/capa ou ícone de mídia (`TV`/`Música`) sobre fundo `ContentCellSurface`.
+     - **Coluna de Texto (`paddingHorizontal = 9.dp`):**
+       - Linha 1: badge `● TOCANDO / PLAYING` em `ctxPlayer` + **Título da mídia** (`11.5.sp` Bold, `TextPrimary`, `maxLines = 1`, `TextOverflow.Ellipsis`).
+       - Linha 2: **Subtítulo + Tempo + Call-to-action** (`10.sp` Medium, `TextSecondary`, ex.: `"S01 E03 · 18:42 / 52:10 • Abrir Player ›"` ou `"Daft Punk · 02:14 / 05:37 • Abrir Player ›"`).
+  2. **Botões de Ação Rápida à Direita (Hitbox obrigatório `48.dp × 48.dp` cada):**
+     - **Botão `Play / Pause` (`48.dp × 48.dp`):** cápsula visual interna de `36.dp × 36.dp` (`RoundedCornerShape(12.dp)`) com fundo primário `pillActiveBgTop -> pillActiveBgBottom` e ícone `pillActiveFg` (`16.dp`).
+     - **Botão `Ir ao Player` / `+10s` (`48.dp × 48.dp`):** cápsula visual interna de `34.dp × 34.dp` (`RoundedCornerShape(11.dp)`) em `ContentCellSurface` com ícone `chevronRight` / `forward10` (`15.dp`, `TextPrimary`).
+  3. **Barra de Progresso Fina (`3.dp` de altura na base interna do card):**
+     - Trilha em `ContentCellSurface` (`100%` da largura interna) e preenchimento em `ctxPlayer` (`#C4B5FD` no escuro / `#6D28D9` no claro) refletindo `position / duration`.
+
+---
+
+#### 5.13.6 Fase 2C — Widgets da Tela Inicial do Android (`NuvioHomeWidget` — `4×1` e `4×2`)
+
+- **Arquitetura Visual para Home Screen do Android (`AppWidgetProvider` / `RemoteViews`):**
+  - Como `RemoteViews` do launcher Android não suportam shader AGSL de refração ao vivo sobre o wallpaper do sistema e o uso de Material You dinâmico (`md.sys`) é proibido, os widgets utilizam **superfícies estruturadas de alto contraste do tema Nuvio** (`#0E1118` / `#171C28` no modo escuro e `#FFFFFF` / `#F1F5F9` no modo claro, com borda fina `1.dp` `#2A3246` / `#CBD5E1` e `RoundedCornerShape(24.dp)`), garantindo contraste **WCAG AA/AAA (`>= 7.0:1`)** sobre qualquer papel de parede claro ou escuro.
+- **Três Configurações Especificadas (100% dos botões com hitbox `>= 48.dp × 48.dp`):**
+
+| Variante e Estado | Dimensões & Estrutura | Elementos e Ações com Hitbox `>= 48.dp × 48.dp` |
+| :--- | :--- | :--- |
+| **1. Widget `4×1` — Estado Offline (`PC Desligado / Suspenso`)** | `height = 72.dp`, `padding = 10.dp 12.dp`, `Row` horizontal | • **Bloco Esquerdo (`weight(1f)`, `minHeight = 48.dp`, abre o app):** Ícone Nuvio DeskRemote (`34.dp`) + título **`PC Sala`** + status âmbar **`● Offline • Toque para abrir`**. <br>• **Botão Direito (`minWidth = 132.dp, height = 48.dp`):** pílula primária **`⚡ Acordar PC (WoL)` / `Wake PC`** (envia Magic Packet UDP em background sem abrir a activity). |
+| **2. Widget `4×1` — Estado Online (`Conectado — Controle Rápido`)** | `height = 72.dp`, `padding = 10.dp 12.dp`, `Row` horizontal | • **Bloco Esquerdo (`weight(1f)`, `minHeight = 48.dp`, abre o app):** Ícone Nuvio (`32.dp`) + **`PC Sala`** + status verde **`● Online • 2 ms`**. <br>• **4 Botões Táticos à Direita (`4 × 48.dp × 48.dp`, visual `38.dp × 38.dp`):** **`Play/Pause`** (destaque primário), **`Vol −`**, **`Vol +`** e **`Mudo` (`Mute`)**. |
+| **3. Widget `4×2` — Expandido (`Online + Now Playing + 5 Controles`)** | `height = 148.dp`, `padding = 12.dp`, `Column` em 2 faixas | • **Faixa Superior (`height = 58.dp`, clicável para abrir `Remote › Player`):** Ícone Nuvio + badge **`● PC Sala • Online`** + miniatura/título da mídia ativa (**`"Andor · S01 E03"`**, `"18:42 / 52:10 • Termina às 22:34"`) + barra de progresso linear `3.dp`. <br>• **Faixa Inferior (`height = 52.dp`, grade de 5 colunas `>= 48.dp × 48.dp`):** **`Vol −`**, **`Mudo`**, **`Play / Pause`** (pílula primária central), **`Vol +`** e **`Tela / App`** (abre direto o DeskRemote). |
+
+---
+
 ## 6. Matriz de Verificação Rápida para Implementação
 
 | Critério | Meta Obrigatória | Como Validar no Código / Tela |
@@ -751,6 +864,14 @@ Para garantir **contraste WCAG AA (`>= 4.5:1`)** em todas as superfícies opacas
    - Simulador de **API Android (`API 33+`, `API 31–32`, `API < 31`)**;
    - Alternador de **Redução de Movimento** (`?rm=1` e `@media (prefers-reduced-motion: reduce)`).
 3. **PNGs renderizados diretamente do mockup atualizado (`ui/mockups/`):**
+   - **Melhorias UI/UX v0.5.4 — Fase 1 (Energia do PC, Atalhos `Mais ▾`, Modo Canhoto & Tema) e Fase 2 (`Swipe Pad`, `Mini-Player` Opaco & Widgets Android `4×1`/`4×2`):**
+     - `mockups/mockup-v054-overview.png` (Painel geral comparativo das 5 telas da v0.5.4 — Fase 1 e Fase 2 em Tema Escuro)
+     - `mockups/mockup-v054-light.png` (Painel comparativo da v0.5.4 em **Tema Claro**, validando contraste WCAG AA/AAA em todas as superfícies opacas e camadas Liquid Glass)
+     - `mockups/mockup-v054-fase1-power-shortcuts.png` (Fase 1A + 1B: Folha Flutuante **"Energia do PC"** em `GlassVariant.REGULAR` com confirmação obrigatória em 2º toque nas células opacas + **`RemoteTextInputBar`** com chip **`Menos ▴` / `Mais ▾`** expandindo as 2 sub-linhas de atalhos `Win+D`, `Win+Tab`, `Ctrl+Z`, `Ctrl+W`, `F5`, `Ctrl+Shift+Esc`, `Alt+F4` com hitboxes `>= 48dp`)
+     - `mockups/mockup-v054-fase1-canhoto-tema.png` (Fase 1C: **`Trackpad` com Modo Canhoto ativo** — trilha `ROLAR` `48dp` à esquerda + chip `Energia` — e card **`INTERAÇÃO E TELA` de `Ajustes`** com o Seletor de Tema **`[ Sistema | Escuro | Claro ]`** `>= 48dp`)
+     - `mockups/mockup-v054-fase2-swipe-pad.png` (Fase 2A: Aba **`Remote` (Modo Nuvio)** com o alternador **`[ D-Pad | Gestos ]`** ativo em **`Gestos` (`PrecisionSwipePad`)**, mantendo rockers `VOL`/`CH`, satélites e `DynamicContextDock` intactos)
+     - `mockups/mockup-v054-fase2-apps-miniplayer.png` (Fase 2B: Aba **`Apps` (`Assistir`)** com o **Mini-Player Persistente 100% opaco** — zero vidro — acima do dock inferior de 5 abas, com miniatura, título, barra de progresso `3dp`, `Play/Pause` e navegação direta para `Remote › Player`)
+     - `mockups/mockup-v054-fase2-widgets-home.png` (Fase 2C: **Widgets da Tela Inicial do Android `4×1` e `4×2`** nos estados Offline com botão `Acordar PC (WoL)`, Online Compacto `4×1` e Online Expandido `4×2` com Now Playing + `Play/Pause`, `Vol −/+`, `Mudo`)
    - **Atualização Automática via GitHub Releases (`Offrain-code/nuvio-deskremote` — Android & Desktop):**
      - `mockups/mockup-update-overview.png` (Painel geral comparativo do **Popup de Atualização Automática** no Android Escuro/Claro, Estados de Download/Erro e Windows Desktop Companion)
      - `mockups/mockup-update-android-available.png` (App Android em Tema Escuro com o modal Liquid Glass `REGULAR` **"Atualização disponível / Update available"** `v0.4.3 → v0.5.0`, bloco opaco de novidades e botões `Mais tarde` / `Atualizar agora` `>= 48dp`)

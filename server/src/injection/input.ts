@@ -369,11 +369,36 @@ export class InputInjector {
     }
   }
 
+  /** Pinch-to-zoom on Windows via Ctrl + Mouse Wheel. */
+  async zoom(delta: number): Promise<InputOutcome> {
+    const steps = Math.round(delta);
+    if (steps === 0) return okOutcome;
+    const ctrl = this.keys.Control;
+    if (!ctrl) return fail('UNKNOWN_KEY', 'Control key not mapped');
+    try {
+      sendInputs(this.bind, packInput([{ ...ctrl, keyup: false }]), 1);
+      try {
+        this.bind.mouse_event(MOUSEEVENTF_WHEEL, 0, 0, steps * WHEEL_DELTA, 0);
+      } catch {
+        sendInputs(this.bind, packMouseInputs([{ dx: 0, dy: 0, flags: MOUSEEVENTF_WHEEL, data: steps * WHEEL_DELTA }]), 1);
+      }
+      return okOutcome;
+    } catch (err) {
+      return fail('ZOOM_FAILED', (err as Error).message);
+    } finally {
+      try {
+        sendInputs(this.bind, packInput([{ ...ctrl, keyup: true }]), 1);
+      } catch {
+        // ignore
+      }
+    }
+  }
+
   getBind(): Win32Bindings {
     return this.bind;
   }
 
-  /** Window and display control actions (Apps / Screen tabs). */
+  /** Window and display control actions (Apps / Trackpad / Screen tabs). */
   async handleWindowAction(action: WindowAction): Promise<InputOutcome> {
     switch (action) {
       case 'focus':
@@ -401,8 +426,26 @@ export class InputInjector {
         this.bind.PostMessageW(0xffff, 0x0112, 0xf170, -1);
         return okOutcome;
       }
+      case 'lock_pc':
+        return this.spawnSystemCommand('rundll32.exe', ['user32.dll,LockWorkStation']);
+      case 'sleep_pc':
+        return this.spawnSystemCommand('rundll32.exe', ['powrprof.dll,SetSuspendState', '0,1,0']);
+      case 'restart_pc':
+        return this.spawnSystemCommand('shutdown.exe', ['/r', '/t', '0']);
+      case 'shutdown_pc':
+        return this.spawnSystemCommand('shutdown.exe', ['/s', '/t', '0']);
       default:
         return fail('UNKNOWN_WINDOW_ACTION', `unknown window action: ${String(action)}`);
+    }
+  }
+
+  private spawnSystemCommand(exe: string, args: string[]): InputOutcome {
+    try {
+      const child = spawn(exe, args, { detached: true, stdio: 'ignore', windowsHide: true });
+      child.unref();
+      return okOutcome;
+    } catch (err) {
+      return fail('WINDOW_ACTION_FAILED', (err as Error).message);
     }
   }
 

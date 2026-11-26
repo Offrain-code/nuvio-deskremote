@@ -1,5 +1,25 @@
-<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Nuvio DeskRemote</string>
     <string name="share_send_to_nuvio">Send to Nuvio</string>
+    <string name="widget_4x1_label">Nuvio Remote (4x1)</string>
+    <string name="widget_4x1_desc">Quick Wake-on-LAN and playback controls</string>
+    <string name="widget_4x2_label">Nuvio Now Playing (4x2)</string>
+    <string name="widget_4x2_desc">Now Playing progress, volume, and Wake-on-LAN</string>
+    <string name="widget_status_offline">Offline • Tap to wake</string>
+    <string name="widget_wake_pc">Wake PC (WoL)</string>
+    <string name="widget_sym_play">▶‖</string>
+    <string name="widget_sym_minus">−</string>
+    <string name="widget_sym_plus">+</string>
+    <string name="widget_sym_mute">M</string>
+    <string name="widget_vol_down">Vol −</string>
+    <string name="widget_vol_up">Vol +</string>
+    <string name="widget_mute">Mute</string>
+    <string name="widget_play">Play</string>
+    <string name="widget_open">Open</string>
+    <string name="shortcut_trackpad_short">Trackpad</string>
+    <string name="shortcut_trackpad_long">Open PC Trackpad</string>
+    <string name="shortcut_screen_short">Screen</string>
+    <string name="shortcut_screen_long">Open PC Screen Share</string>
+    <string name="shortcut_apps_short">Apps</string>
+    <string name="shortcut_apps_long">Open Nuvio Library &amp; Apps</string>
 </resources>

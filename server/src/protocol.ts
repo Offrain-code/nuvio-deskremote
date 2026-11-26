@@ -21,7 +21,19 @@ export type MouseButton = 'left' | 'right' | 'middle';
 
 export type ScreenProfile = '720p30' | '720p60' | '1080p30' | '1080p60';
 
-export type WindowAction = 'focus' | 'nuvio' | 'restart_nuvio' | 'mute_toggle' | 'beep' | 'suspend_display' | 'curtain_on' | 'curtain_off';
+export type WindowAction =
+  | 'focus'
+  | 'nuvio'
+  | 'restart_nuvio'
+  | 'mute_toggle'
+  | 'beep'
+  | 'suspend_display'
+  | 'curtain_on'
+  | 'curtain_off'
+  | 'lock_pc'
+  | 'sleep_pc'
+  | 'restart_pc'
+  | 'shutdown_pc';
 
 export interface MonitorInfo {
   index: number;
@@ -309,7 +321,7 @@ export type ClientMessage =
   | { type: 'nav'; action: NavAction }
   | { type: 'key'; name: KeyName; repeat?: number }
   | { type: 'type'; text: string }
-  | { type: 'mouse'; move?: { dx: number; dy: number }; abs?: { nx: number; ny: number; monitor?: number }; click?: MouseButton; doubleClick?: MouseButton; down?: MouseButton; up?: MouseButton; scroll?: number }
+  | { type: 'mouse'; move?: { dx: number; dy: number }; abs?: { nx: number; ny: number; monitor?: number }; click?: MouseButton; doubleClick?: MouseButton; down?: MouseButton; up?: MouseButton; scroll?: number; zoom?: number }
   | { type: 'state'; screen: ScreenName }
   | { type: 'screen_start'; profile: ScreenProfile; offer?: string; monitor?: number; audio?: boolean }
   | { type: 'screen_stop' }

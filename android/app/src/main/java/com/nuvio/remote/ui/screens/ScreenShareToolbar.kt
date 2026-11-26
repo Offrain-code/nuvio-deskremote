@@ -35,10 +35,10 @@ import androidx.compose.material.icons.rounded.FullscreenExit
 import androidx.compose.material.icons.rounded.Keyboard
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
-import androidx.compose.material.icons.rounded.MonitorHeart
 import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.Mouse
 import androidx.compose.material.icons.rounded.OpenWith
+import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.TouchApp
@@ -593,7 +593,7 @@ internal fun MorePcPopoverMenu(
             callbacks.onSendEscape()
             onDismiss()
         },
-        PcGridAction(l10n("Screen off", "Apagar tela"), Icons.Rounded.MonitorHeart) {
+        PcGridAction(l10n("Power", "Energia"), Icons.Rounded.PowerSettingsNew) {
             callbacks.onSuspendDisplay()
             onDismiss()
         },

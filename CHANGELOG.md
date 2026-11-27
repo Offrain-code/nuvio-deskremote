@@ -2,6 +2,17 @@
 
 All notable changes to **Nuvio DeskRemote** (Android app + Windows Companion) are documented in this file.
 
+## [0.7.0] - 2026-11-27
+
+### Added
+- **Windows Per-App Audio Mixer & Output Switcher (PC Mode Only):** Added CoreAudio COM Interop support on the Windows Companion (`audio_mixer_get`, `audio_mixer_set_app`, `audio_mixer_set_output`) and a floating `AudioMixerSheetDialog` (`GlassVariant.REGULAR` shell with 100% opaque output chips and per-app mute + slider rows) triggered from `Screen` (`Audio Mixer`).
+- **Screen Share Zoom Auto-Follow Cursor (PC Mode Only):** Added automatic viewport panning (`CursorFollowZoomEffect` + `computeCursorFollowPan`) when zoomed (`> 1.01x`) to keep the remote cursor inside a 56% center deadzone, accompanied by floating `GlassVariant.CLEAR` overlay pills (`Reset` + `Follow cursor` toggle).
+- **Auto-Pause on Phone Calls & Sleep Timer Fade-Out (60s):** Added an opt-in `CallAutoPauseSettingsCard` in `Settings` (`READ_PHONE_STATE` requested only when enabled) with `CallPauseObserver` to pause Nuvio on incoming/active calls and optionally resume afterward, plus a `Gradual volume fade-out (60s)` toggle in the Speed & Sleep Timer sheet (`PlayerSpeedTimerSheetBody`).
+- **1:1 Swipe-to-Dismiss Floating Sheets:** Added a reusable `SwipeToDismissSheetContainer` (`36x4dp` drag handle, GPU `translationY`, reduced-motion aware) applied to `AudioMixerSheetDialog`, `MultiPcSheetDialog`, and `PrivateListeningSheetDialog`.
+
+### Fixed
+- **Nuvio `Sources` (`Fontes`) Button:** Opening `Sources` in Nuvio Mode now opens `PlayerSheetType.SOURCES` immediately with a loading state (`requestSources(force = true)`) and refreshes as soon as the source list arrives.
+
 ## [0.6.0] - 2026-11-27
 
 ### Added

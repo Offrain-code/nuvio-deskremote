@@ -1,14 +1,14 @@
 {
   "en": [
-    "Added Private Listening in PC Mode: stream PC audio (WASAPI loopback) to your phone without video, continuing with the screen off via a persistent notification.",
-    "Added 'Send to PC' in the Android Share Sheet to open links in the PC browser, copy text to the PC clipboard, or save photos/PDFs/files (up to 50 MB, LAN_ONLY) to Windows Downloads.",
-    "Added Multi-PC profiles: switch between paired computers in 1 tap from the top connection pill (with Wake-on-LAN) and rename/remove profiles in Settings.",
-    "Fixed Windows Nuvio window detection so starting the Companion before Nuvio HTPC never locks onto the Companion's own single-instance window."
+    "Added Windows Per-App Audio Mixer & Output Switcher in PC Mode (Screen > Audio Mixer): switch default output devices and adjust volume or mute individual Windows apps.",
+    "Added Screen Share Zoom Auto-Follow Cursor in PC Mode: zoomed viewports automatically track the remote cursor with floating Reset and Follow Cursor pills.",
+    "Added opt-in Auto-Pause on Phone Calls in Settings (with optional auto-resume) and Gradual Volume Fade-Out (60s) in the Nuvio Sleep Timer sheet.",
+    "Added 1:1 swipe-to-dismiss gesture support to floating sheets and fixed the Nuvio Sources button to open immediately with live loading feedback."
   ],
   "pt-BR": [
-    "Nova Escuta Privada no Modo PC: ouça o áudio do PC (WASAPI loopback) no celular sem vídeo, continuando com a tela apagada e controles na notificação.",
-    "Novo destino 'Enviar para o PC' no compartilhamento do Android para abrir links no navegador do PC, copiar texto para a área de transferência ou salvar fotos/PDFs/arquivos em Downloads (até 50 MB, apenas Wi-Fi local LAN_ONLY).",
-    "Novo suporte a Multi-PC: alterne entre computadores pareados com 1 toque na pílula superior (com Acordar WoL) e gerencie/renomeie perfis em Ajustes.",
-    "Corrigida a detecção da janela do Nuvio no Windows para evitar que o Companion iniciado antes do Nuvio HTPC prenda as teclas na própria janela auxiliar."
+    "Novo Mixer de Áudio por Aplicativo e Troca de Saída do Windows no Modo PC (Tela > Mixer de Áudio): alterne a saída padrão e ajuste volume ou mudo de cada aplicativo.",
+    "Novo Zoom seguindo o cursor no compartilhamento de tela (Modo PC): o enquadramento acompanha o ponteiro automaticamente com pílulas flutuantes de Reset e Seguir cursor.",
+    "Nova pausa automática em chamadas telefônicas em Ajustes (opcional, com retomada ao encerrar) e redução gradual de volume (fade-out de 60s) no Sleep Timer do Nuvio.",
+    "Adicionado arraste 1:1 para fechar folhas flutuantes e corrigido o botão Fontes do Nuvio para abrir imediatamente com indicador de carregamento."
   ]
 }

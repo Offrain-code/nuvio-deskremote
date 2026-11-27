@@ -841,6 +841,130 @@ Esta seção especifica as melhorias visuais e funcionais da **v0.5.4**, dividid
 
 ---
 
+### 5.14 Fase 3 — Diferenciais de Ecossistema (Pós-v0.5.5 / v0.6.0)
+
+Esta seção especifica os 3 recursos da **Fase 3 — Diferenciais de Ecossistema** do Nuvio DeskRemote: **Escuta Privada** (áudio WASAPI loopback do PC no celular sem trilha de vídeo, exclusivo do Modo PC), **Share Sheet Expandido ("Enviar para o PC")** (links, texto e arquivos `LAN_ONLY` até `50 MB`) e **Multi-PC** (perfis de computadores pareados com troca rápida na pílula superior e gerenciamento em `Ajustes`).
+
+---
+
+#### 5.14.1 Fase 3A — Escuta Privada (Áudio do PC no Celular sem Vídeo — Modo PC Exclusivo)
+
+- **Escopo Estrito (Modo PC Exclusivo):**
+  - Disponível **exclusivamente no Modo PC** (aba **`Tela`** — botão no card `PortraitStatusControlCard` em modo retrato e ação no menu flutuante `Mais PC` em tela cheia paisagem).
+  - Quando a sessão de Escuta Privada está ativa e o usuário recolhe a folha para usar o **`Trackpad`** ou a **`Tela`**, um banner compacto opaco (`PrivateListeningBanner`, `height = 48.dp`) pode ser exibido no topo do Modo PC. **Proibido** exibir gatilhos ou banners da Escuta Privada nas abas `Remote` e `Apps` (Modo Nuvio).
+- **Arquitetura Funcional e Economia de Energia:**
+  - Inicia apenas a trilha de áudio **WASAPI loopback (Opus 48 kHz baixa latência)** do PC Windows para o fone de ouvido ou alto-falante do Android, **pausando/desligando a captura e decodificação de vídeo H.264**.
+  - Executa em `ForegroundService` (`foregroundServiceType="mediaPlayback"`) com `PARTIAL_WAKE_LOCK` e `WifiLock` (`WIFI_MODE_FULL_LOW_LATENCY`), continuando a tocar sem cortes mesmo com a **tela do celular apagada**.
+- **Gatilhos de Entrada (`>= 48.dp × 48.dp`):**
+  1. **Aba `Tela` (Modo Retrato — `PortraitStatusControlCard` em `ScreenSharePortrait.kt`):**
+     - Botão `PortraitCompactPill` **`Escuta Privada` / `Private Audio`** (`defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`, cápsula visual `height = 38.dp`, `RoundedCornerShape(13.dp)`), posicionado ao lado de `Som PC: Ativo` ou na primeira linha de atalhos do PC.
+     - Quando ativo (`privateListeningActive == true`), recebe destaque primário (`pillActiveBgTop -> pillActiveBgBottom`, texto `pillActiveFg`) ou borda `1.5.dp statusOnline` com LED verde pulsante/estático.
+  2. **Aba `Tela` (Modo Paisagem — Popover `Mais PC` em `ScreenShareScreen.kt`):**
+     - Item **`Escuta Privada` / `Private Audio`** (`minWidth = 48.dp, minHeight = 48.dp`) na grade do menu flutuante `Mais PC`.
+- **Folha Flutuante `Escuta Privada` (`PrivateListeningSheet` — `GlassVariant.REGULAR` + Card Interno 100% Opaco):**
+  - **Scrim de Fundo:** `rgba(5, 7, 11, 0.56)` no escuro / `rgba(15, 23, 42, 0.40)` no claro.
+  - **Container Externo (`PrivateListeningModalGlass`):** única camada com **`GlassVariant.REGULAR` (`elevated = true`)**, `RoundedCornerShape(24.dp)`, `padding = 14.dp`.
+  - **Cabeçalho da Folha (`height = 48.dp`):**
+    - Kicker: `MODO PC • ÁUDIO SEM VÍDEO (WASAPI LOOPBACK)` (`9.5.sp` Bold, `ctxPlayer`).
+    - Título: **`Escuta Privada • Private Listening`** (`13.5.sp` ExtraBold, `TextPrimary`).
+    - Botão `Fechar` à direita (`48.dp × 48.dp`, cápsula visual circular `34.dp` em `ContentCellSurface`).
+  - **Seletor/Indicador dos 3 Estados de Conexão de Áudio (Células Opacas `ContentCellSurface`, `height = 48.dp`):**
+
+| Estado da Escuta Privada | Rótulo (PT-BR / EN) | Cor do LED / Texto e Contraste (Escuro / Claro) | Comportamento |
+| :--- | :--- | :--- | :--- |
+| **1. `CONNECTING`** | `Conectando áudio…` / `Connecting audio…` | `statusWarning` (`#FBBF24` escuro `10.4:1` / `#B45309` claro `5.81:1` AA) | Negociando trilha de áudio sem vídeo com o Companion (`8787`). |
+| **2. `ACTIVE` (Padrão)** | `● Ativa • PC Sala • 12 ms` / `Active • 12 ms` | `statusOnline` (`#34D399` escuro `8.95:1` / `#047857` claro `5.48:1` AA) | Recebendo pacotes PCM/Opus; vídeo desligado; `WakeLock` ativo. |
+| **3. `SILENT`** | `Sem áudio no PC` / `No PC audio playing` | `textSecondary` (`#B4B8C2` escuro `8.54:1` / `#334155` claro `10.3:1` AAA) | Sessão conectada, mas o mixer do Windows está em silêncio (`0 dBFS`). |
+
+  - **Card Interno 100% Opaco de Áudio (`ContentCardSurface` `#13161E` escuro / `#FFFFFF` claro — Zero Vidro Aninhado):**
+    1. **Saída de Áudio + Indicador Visual Discreto (`Row` de `44.dp`):**
+       - Ícone de fone de ouvido + título **`Fone / Celular • Opus 48 kHz`** e subtítulo **`Vídeo desligado • Economia de bateria`**.
+       - **Indicador de Nível de Áudio (`5` barras verticais `4.dp × 10..22.dp`, `RoundedCornerShape(2.dp)`, cor `statusOnline`):**
+         - **Respeito Obrigatório à Redução de Movimento:** quando a redução de movimento do Android (`LocalReducedMotion.current`) ou CSS (`prefers-reduced-motion: reduce` / `.reduced-motion`) estiver ativa, **nenhuma barra oscila ou anima** — o indicador exibe alturas estáticas fixas (`10.dp, 18.dp, 14.dp, 20.dp, 12.dp`) ao lado do badge textual **`ÁUDIO ATIVO`**, sem depender de movimento para transmitir estado.
+    2. **Aviso de Tela Apagada (`ContentCellSurface`, `RoundedCornerShape(12.dp)`, `padding = 8.dp 10.dp`):**
+       - Ícone de tela bloqueada/lua + texto primário **`Continua tocando com a tela apagada`** e subtítulo bilíngue **`EN: Keeps playing with screen off (Foreground Service)`**.
+    3. **Controles de Volume e Mudo do PC (`Row` de `height = 48.dp`, `spacedBy(6.dp)`):**
+       - **`Mudo PC / Mute`** (`weight(1.15f)`, `minWidth = 48.dp, height = 48.dp`, visual `38.dp` em `ContentCellSurface`).
+       - **`Vol −`** (`weight(0.95f)`, `minWidth = 48.dp, height = 48.dp`, visual `38.dp` em `ContentCellSurface`).
+       - **`Vol +`** (`weight(0.95f)`, `minWidth = 48.dp, height = 48.dp`, visual `38.dp` em `ContentCellSurface`).
+       - Barra linear opaca de nível de volume (`78%`, `height = 5.dp`, preenchimento `ctxPlayer`).
+  - **Botão Principal `Encerrar Escuta Privada` (`>= 48.dp × 48.dp`):**
+    - Largura total (`fillMaxWidth()`, `height = 48.dp`, cápsula visual `40.dp`, `RoundedCornerShape(13.dp)`), fundo `statusError.copy(alpha = 0.16f)`, borda `1.5.dp statusError` e texto **`Encerrar Escuta Privada / Stop Private Listening`** em `statusError` (`#F87171` no escuro / `#B91C1C` no claro, contraste `>= 5.6:1` AA).
+- **Referência Visual da Notificação Persistente do Android (`ForegroundService`):**
+  - Exibida na cortina de notificações e tela de bloqueio do Android enquanto a Escuta Privada estiver ativa:
+    - **Cabeçalho:** ícone `Nuvio DeskRemote` + **`Escuta Privada • PC Sala`** + badge **`12 ms • Ao vivo`**.
+    - **Corpo:** **`Áudio do PC no celular (sem vídeo) • Tela apagada ativa`**.
+    - **Botões de Ação da Notificação (`2` botões com área de toque `>= 48.dp × 48.dp`):** **`Mudo / Mute`** e **`Parar / Stop`**.
+
+---
+
+#### 5.14.2 Fase 3B — Share Sheet Expandido ("Enviar para o PC" — Modo PC / Android)
+
+- **Contexto e Separação de Destinos no Android Share Sheet:**
+  - **`Enviar para o Nuvio` (`ShareActivity` existente — Modo Nuvio):** mantém o envio direto e silencioso de links de mídia (`YouTube`, `YouTube Music`, streams) para reprodução imediata no Nuvio HTPC.
+  - **`Enviar para o PC` (`PcShareActivity` novo — Modo PC):** novo alvo de compartilhamento (`ACTION_SEND` para `text/plain`, `image/*`, `application/pdf`, `*/*`) que apresenta uma **folha flutuante Liquid Glass (`GlassVariant.REGULAR`)** sobre o aplicativo de origem, permitindo enviar **Links**, **Texto simples** e **Arquivos/Fotos/PDFs** para o computador Windows.
+- **Estrutura da Folha Flutuante `"Enviar para o PC"` (`PcShareSheet` — `GlassVariant.REGULAR` + Cards Internos 100% Opacos):**
+  - **Container Externo:** `GlassVariant.REGULAR` (`elevated = true`), `RoundedCornerShape(24.dp)`, `padding = 14.dp` sobre scrim escuro translúcido (`rgba(5, 7, 11, 0.56)`).
+  - **Cabeçalho (`height = 48.dp`):**
+    - Título **`Enviar para o PC • Send to PC`** + seletor compacto do computador de destino **`● PC Sala • Wi-Fi ▾`** (`minWidth = 48.dp, height = 48.dp`, cápsula visual `32.dp` em `ContentCellSurface`, permitindo alternar o PC destino caso haja múltiplos PCs pareados) + botão `Fechar` (`48.dp × 48.dp`).
+  - **Seletor/Abas de Tipo de Payload (ou detecção automática pelo `mimeType` do `Intent`, `height = 48.dp`):**
+    - **`1. Link (URL)`** · **`2. Texto`** · **`3. Arquivo / Foto (LAN)`** (cada aba com hitbox `>= 48.dp × 48.dp`).
+- **Especificação dos 3 Tipos de Payload e Estados de Transferência / Segurança (`LAN_ONLY`):**
+
+| Tipo de Payload / Estado | Card Interno 100% Opaco (`ContentCardSurface` / `ContentCellSurface`) | Ações com Hitbox `>= 48.dp × 48.dp` e Regras de Segurança |
+| :--- | :--- | :--- |
+| **1. Link (`URL` `http/https`)** | Preview opaco com ícone de link, título/domínio e URL (`https://github.com/Offrain-code/nuvio-deskremote/releases`). | • **Ação Padrão (Primária):** **`Abrir no navegador do PC / Open in PC Browser`** (`height = 48.dp`, pílula ativa `pillActiveBg`).<br>• **Ação Secundária:** **`Copiar para área de transferência / Copy to Clipboard`** (`height = 48.dp`, `ContentCellSurface`). |
+| **2. Texto Simples (`text/plain`)** | Preview opaco do texto selecionado (`maxLines = 3`, `TextOverflow.Ellipsis`) + contagem (`142 caracteres`). | • **Ação Única:** **`Enviar para área de transferência do PC / Send to PC Clipboard`** (`height = 48.dp`). |
+| **3. Foto / PDF / Arquivo (`LAN_ONLY`, máx. `50 MB`) — Em Transferência / Sucesso** | Card opaco com ícone do arquivo (`PDF`/`IMG`), nome (**`relatorio-arquitetura-v060.pdf`**), tamanho (**`18,4 MB • Limite 50 MB`**), pasta destino (**`Downloads\NuvioRemote\`**), **barra de progresso linear (`6.dp`)** (`72% • 13,2 / 18,4 MB`) e badge de conclusão **`✓ Salvo em Downloads / Saved to Downloads`** (`statusOnline`). | • **Ação Principal:** **`Salvar em Downloads do PC / Save to PC Downloads`** (`height = 48.dp`).<br>• Durante o envio: botão **`Cancelar envio`** (`>= 48.dp`). |
+| **4. Estado de Bloqueio Fora da LAN (`LAN_ONLY` Enforcement)** | Card opaco com borda `1.5.dp statusWarning` (`#FBBF24` escuro / `#B45309` claro), ícone de cadeado Wi-Fi e mensagem explícita:<br>**`Envio de arquivos disponível apenas no Wi-Fi de casa (LAN_ONLY)`**<br>`EN: File transfer is restricted to local home Wi-Fi (LAN_ONLY • max 50 MB).` | • Exibido automaticamente quando `isTunnelActive == true` (`4G/5G` / Cloudflare Tunnel) ou sub-rede não-local.<br>• O envio de arquivos é bloqueado no cliente e no servidor HTTP (`/api/v1/upload` com middleware `LAN_ONLY`), mantendo apenas botão **`Fechar / Close`** (`>= 48.dp`). |
+
+---
+
+#### 5.14.3 Fase 3C — Multi-PC (Perfis de Computadores Pareados — Escopo de Sistema)
+
+- **Escopo de Sistema (Transversal ao App):**
+  - Permite salvar e alternar entre múltiplos computadores pareados (ex.: **`PC Sala`**, **`PC Escritório`**, **`HTPC Quarto`**), cada um armazenando seu próprio `id`, `displayName`, `lanHost`, `wsPort`, `authToken`, `macAddresses` (para Wake-on-LAN), `tunnelUrl` e estado da Ponte Nuvio (`47321`).
+- **1. Gatilho na Pílula Superior de Conexão (`NuvioGlassTopBar` em `NuvioRemoteRoot.kt`):**
+  - A zona clicável esquerda da barra superior (`Modifier.weight(1f).defaultMinSize(minHeight = 48.dp)`) exibe:
+    - `StatusLed(connState)` + **`PC Sala • 2 ms ▾`** (no Wi-Fi local) ou **`PC Escritório • Remoto ▾`** (no túnel), adicionando um chevron `▾` (`12.dp`) que indica a presença do seletor rápido de computadores.
+  - **Ação do Toque:** abre a **Folha Flutuante `"Computadores"` (`MultiPcSwitcherSheet`)** diretamente sobre a aba atual (troca rápida com 1 toque, sem precisar navegar até `Ajustes`).
+- **2. Folha Flutuante `"Computadores"` (`MultiPcSwitcherSheet` — `GlassVariant.REGULAR` + Lista 100% Opaca):**
+  - **Container Externo:** `GlassVariant.REGULAR` (`elevated = true`), `RoundedCornerShape(24.dp)`, `padding = 14.dp` sobre scrim `rgba(5, 7, 11, 0.56)`.
+  - **Cabeçalho (`height = 48.dp`):**
+    - Kicker: `SISTEMA • TROCA RÁPIDA DE COMPUTADOR (1 TOQUE)`.
+    - Título: **`Meus Computadores • My Computers`**.
+    - Botão `Fechar` (`48.dp × 48.dp`, cápsula visual `34.dp` em `ContentCellSurface`).
+  - **Lista Interna 100% Opaca de Perfis (`ContentCardSurface` / `ContentCellSurface` — Zero Vidro na Lista):**
+    - Cada item da lista é um card/célula **100% opaco** (`minHeight = 56.dp`, `RoundedCornerShape(15.dp)`, `padding = 8.dp 10.dp`) com área principal clicável (`>= 48.dp`) e ação contextual à direita (`>= 48.dp × 48.dp`):
+      1. **`PC Sala` (Ativo / Conectado):**
+         - Borda `1.5.dp statusOnline` (`#34D399` escuro / `#047857` claro).
+         - Linha 1: **`PC Sala`** + badge **`● Ativo • 2 ms • Wi-Fi`**.
+         - Linha 2: `192.168.1.42:8787 • Ponte Nuvio Sincronizada`.
+      2. **`PC Escritório` (Disponível na Rede Wi-Fi — Troca em 1 Toque):**
+         - Superfície `ContentCellSurface`, borda `1.dp ContentBorder`.
+         - Linha 1: **`PC Escritório`** + badge **`● Disponível • Wi-Fi`**.
+         - Linha 2: `192.168.1.88:8787 • Tocar para alternar`.
+         - Botão à direita: **`Conectar / Switch`** (`minWidth = 76.dp, height = 48.dp`, cápsula visual `34.dp`).
+      3. **`HTPC Quarto` (Offline / Suspenso — Com Botão `Acordar (WoL)`):**
+         - Superfície `ContentCellSurface`, borda `1.dp statusWarning.copy(alpha = 0.40f)`.
+         - Linha 1: **`HTPC Quarto`** + badge âmbar **`● Offline`** (`statusWarning`).
+         - Linha 2: `192.0.2.105 • MAC salvo para Wake-on-LAN`.
+         - Botão à direita: **`⚡ Acordar (WoL)`** (`minWidth = 104.dp, height = 48.dp`, cápsula visual `34.dp` primária/destaque que dispara o Magic Packet UDP imediatamente).
+  - **Rodapé da Folha (`Row` de `height = 48.dp`, `spacedBy(8.dp)`):**
+    - Botão **`+ Adicionar PC / + Add PC`** (`weight(1.25f)`, `height = 48.dp`, cápsula visual `38.dp` em `pillActiveBgTop -> pillActiveBgBottom`, texto `pillActiveFg` — navega para `Ajustes` abrindo o pareamento QR/PIN).
+    - Botão **`Gerenciar / Manage`** (`weight(1f)`, `height = 48.dp`, cápsula visual `38.dp` em `ContentCellSurface` — abre o card completo em `Ajustes`).
+- **3. Card `CONEXÃO COM O COMPUTADOR` Evoluído em `Ajustes` (`SettingsScreen.kt` — 100% Opaco):**
+  - Mantém superfície **100% opaca (`ContentCardSurface`)** e estrutura o gerenciamento completo dos perfis salvos:
+    - **Bloco do PC Ativo + Lista Opaca de Perfis Salvos (`ContentCellSurface`):**
+      - Para cada perfil salvo, exibe uma faixa de ações com hitboxes `>= 48.dp × 48.dp`:
+        - **`Conectar / Ativo`** (ou **`Acordar WoL`** quando offline);
+        - **`Renomear / Rename`** (permite editar o nome amigável do perfil, ex.: `"PC Sala"`, `"PC Escritório"`);
+        - **`Remover / Remove`** (com **confirmação obrigatória em 2º toque**: o 1º toque altera o botão/linha para **`Confirmar remoção?`** em `statusError` `#F87171` escuro / `#B91C1C` claro + botão **`Cancelar`**, impedindo exclusão acidental do pareamento SHA-256).
+    - **Barra Inferior de Novo Pareamento (`Row` de `height = 48.dp`, `spacedBy(6.dp)`):**
+      - Mantém os 3 botões canônicos com `defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`: **`Buscar Wi-Fi`**, **`Escanear QR`** e **`Código PIN`** (`+ Adicionar PC`).
+
+---
+
 ## 6. Matriz de Verificação Rápida para Implementação
 
 | Critério | Meta Obrigatória | Como Validar no Código / Tela |
@@ -864,6 +988,12 @@ Esta seção especifica as melhorias visuais e funcionais da **v0.5.4**, dividid
    - Simulador de **API Android (`API 33+`, `API 31–32`, `API < 31`)**;
    - Alternador de **Redução de Movimento** (`?rm=1` e `@media (prefers-reduced-motion: reduce)`).
 3. **PNGs renderizados diretamente do mockup atualizado (`ui/mockups/`):**
+   - **Fase 3 — Diferenciais de Ecossistema (Pós-v0.5.5 / v0.6.0 — Escuta Privada, Share Sheet `"Enviar para o PC"` e Multi-PC):**
+     - `mockups/mockup-v060-overview.png` (Painel geral comparativo dos 3 recursos da Fase 3 em **Tema Escuro**: Escuta Privada no Modo PC, Share Sheet Expandido `"Enviar para o PC"` e Multi-PC com Folha `"Computadores"` + Card em `Ajustes`)
+     - `mockups/mockup-v060-light.png` (Painel geral comparativo dos 3 recursos da Fase 3 em **Tema Claro**, validando contraste WCAG AA/AAA em todas as superfícies opacas e camadas Liquid Glass `REGULAR`)
+     - `mockups/mockup-v060-private-listening.png` e `mockups/mockup-v060-private-listening-light.png` (Fase 3A em Tema Escuro e Tema Claro: Gatilho `Escuta Privada` `>= 48dp` na aba `Tela`, Folha Flutuante `Escuta Privada` em `GlassVariant.REGULAR` com os estados `Conectando...` / `Ativa • PC Sala • 12 ms` / `Sem áudio`, card interno 100% opaco com indicador de áudio estático em redução de movimento, aviso `Continua tocando com a tela apagada`, `Mudo PC`, `Vol −/+`, `Encerrar Escuta Privada` e referência da **Notificação Persistente do Android**)
+     - `mockups/mockup-v060-share-pc.png` e `mockups/mockup-v060-share-pc-light.png` (Fase 3B em Tema Escuro e Tema Claro: Folha Flutuante `"Enviar para o PC"` em `GlassVariant.REGULAR` com seletor `PC Sala • Wi-Fi ▾`, cards internos 100% opacos para **Link (URL)**, **Texto simples** e **Foto/PDF/Arquivo (`LAN_ONLY`, máx. `50 MB`)** com barra de progresso `72%`, feedback `Salvo em Downloads` e card de bloqueio fora da LAN `Envio de arquivos disponível apenas no Wi-Fi de casa (LAN_ONLY)`)
+     - `mockups/mockup-v060-multi-pc.png` e `mockups/mockup-v060-multi-pc-light.png` (Fase 3C em Tema Escuro e Tema Claro: Pílula superior `PC Sala • 2 ms ▾` abrindo a Folha Flutuante `"Computadores"` em `GlassVariant.REGULAR` com lista 100% opaca de PCs pareados — `PC Sala • Ativo`, `PC Escritório • Disponível` e `HTPC Quarto • Offline` com botão `Acordar (WoL)` + `+ Adicionar PC` — e card **`CONEXÃO COM O COMPUTADOR`** evoluído em `Ajustes` com `Conectar`, `Renomear`, `Remover` com confirmação e `Escanear QR` / `Parear PIN`)
    - **Melhorias UI/UX v0.5.4 — Fase 1 (Energia do PC, Atalhos `Mais ▾`, Modo Canhoto & Tema) e Fase 2 (`Swipe Pad`, `Mini-Player` Opaco & Widgets Android `4×1`/`4×2`):**
      - `mockups/mockup-v054-overview.png` (Painel geral comparativo das 5 telas da v0.5.4 — Fase 1 e Fase 2 em Tema Escuro)
      - `mockups/mockup-v054-light.png` (Painel comparativo da v0.5.4 em **Tema Claro**, validando contraste WCAG AA/AAA em todas as superfícies opacas e camadas Liquid Glass)

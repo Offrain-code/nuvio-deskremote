@@ -326,6 +326,9 @@ export type ClientMessage =
   | { type: 'screen_start'; profile: ScreenProfile; offer?: string; monitor?: number; audio?: boolean }
   | { type: 'screen_stop' }
   | { type: 'screen_audio'; enabled: boolean }
+  | { type: 'private_audio_start' }
+  | { type: 'private_audio_stop' }
+  | { type: 'pc_open_url'; url: string }
   | { type: 'screen_webrtc_state'; live: boolean }
   | { type: 'webrtc_candidate'; candidate: string; mid?: string }
   | { type: 'window'; action: WindowAction }
@@ -370,6 +373,8 @@ export type ServerMessage =
   | { type: 'error'; code: string; message: string; reply_to?: string }
   | { type: 'state'; screen: ScreenName; playerActive: boolean; confirmed: boolean; source: 'command' | 'log'; ts: string }
   | { type: 'screen_status'; status: 'starting' | 'running' | 'stopped'; profile?: ScreenProfile; monitor?: number; detail?: string }
+  | { type: 'private_audio_status'; active: boolean; detail?: string }
+  | { type: 'pc_open_url_result'; ok: boolean; error?: string }
   | { type: 'screen_frame'; data: string; width: number; height: number; monitor?: number; ts: number }
   | { type: 'webrtc_answer'; sdp: string }
   | { type: 'log_event'; tag: string; line: string; ts: string }

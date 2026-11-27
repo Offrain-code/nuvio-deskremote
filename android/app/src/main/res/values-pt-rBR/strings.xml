@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">Nuvio DeskRemote</string>
     <string name="share_send_to_nuvio">Enviar para o Nuvio</string>
+    <string name="share_send_to_pc">Enviar para o PC</string>
     <string name="widget_4x1_label">Nuvio Remote (4x1)</string>
     <string name="widget_4x1_desc">Wake-on-LAN rápido e controles de reprodução</string>
     <string name="widget_4x2_label">Nuvio Tocando Agora (4x2)</string>

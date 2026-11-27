@@ -69,16 +69,22 @@ import com.nuvio.remote.connection.NuvioConnection
 import com.nuvio.remote.connection.NuvioRoute
 import com.nuvio.remote.connection.NuvioScreenState
 import com.nuvio.remote.connection.NuvioTab
+import com.nuvio.remote.connection.PrivateListeningState
 import com.nuvio.remote.connection.ScreenProfile
 import com.nuvio.remote.connection.popNuvioRoute
 import com.nuvio.remote.connection.pushNuvioRoute
 import com.nuvio.remote.data.AppPrefs
 import com.nuvio.remote.discovery.PcService
+import com.nuvio.remote.media.PrivateListeningBridge
+import com.nuvio.remote.media.PrivateListeningService
 import com.nuvio.remote.pairing.PairingManager
 import com.nuvio.remote.ui.components.AutoUpdateDialog
 import com.nuvio.remote.ui.components.Haptics
+import com.nuvio.remote.ui.components.MultiPcSheetDialog
 import com.nuvio.remote.ui.components.NuvioIcon
 import com.nuvio.remote.ui.components.NuvioText
+import com.nuvio.remote.ui.components.PrivateListeningBanner
+import com.nuvio.remote.ui.components.PrivateListeningSheetDialog
 import com.nuvio.remote.ui.components.StatusLed
 import com.nuvio.remote.ui.i18n.AppLanguage
 import com.nuvio.remote.ui.i18n.LocalAppLanguage
@@ -153,6 +159,7 @@ fun NuvioRemoteRoot(
     val isTunnelActive by conn.isTunnelActive.collectAsState()
     val liveWakeInfo by conn.bridge.wakeInfo.collectAsState()
     val nowPlaying by conn.bridge.nowPlaying.collectAsState()
+    val privateListeningState by conn.privateListeningState.collectAsState()
 
     val backStack = remember { mutableStateListOf(NuvioRoute.fromTab(tab)) }
     var isScreenImmersive by remember { mutableStateOf(false) }
@@ -163,10 +170,31 @@ fun NuvioRemoteRoot(
     var appThemeMode by remember { mutableStateOf(AppThemeMode.fromWire(appPrefs.appThemeMode)) }
     var trackpadLeftHanded by remember { mutableStateOf(appPrefs.trackpadLeftHanded) }
     var remoteSwipeMode by remember { mutableStateOf(appPrefs.remoteSwipeMode) }
+    var showMultiPcSheet by remember { mutableStateOf(false) }
+    var showPrivateListeningSheet by remember { mutableStateOf(false) }
+    var profilesRevision by remember { mutableIntStateOf(0) }
     val resolvedDarkTheme = resolveDarkTheme(appThemeMode, isSystemInDarkTheme())
+    val savedProfiles = remember(profilesRevision, connState) { pairing.savedProfiles() }
+    val activeProfileId = remember(profilesRevision, connState) { pairing.activeProfile()?.id }
+    val activePcName = remember(savedProfiles, activeProfileId) {
+        savedProfiles.firstOrNull { it.id == activeProfileId }?.name ?: "PC"
+    }
+
+    PrivateListeningServiceEffects(
+        context = context,
+        conn = conn,
+        privateListeningState = privateListeningState,
+        activePcName = activePcName,
+        pingMs = pingMs,
+        onHideSheet = { showPrivateListeningSheet = false },
+    )
 
     LaunchedEffect(liveWakeInfo) {
-        liveWakeInfo?.let { appPrefs.saveWakeInfo(it) }
+        liveWakeInfo?.let {
+            appPrefs.saveWakeInfo(it)
+            pairing.updateActiveProfileMeta(wakeMacs = it.macs, wakeBroadcasts = it.broadcasts)
+            profilesRevision += 1
+        }
     }
 
     fun navigateToTab(targetTab: NuvioTab) {
@@ -228,7 +256,7 @@ fun NuvioRemoteRoot(
                         ),
                 ) {
                     if (!isScreenImmersive) {
-                        NuvioGlassTopBar(
+                        NuvioTopChromeSection(
                             currentRoute = currentRoute,
                             connState = connState,
                             serverState = serverState,
@@ -237,9 +265,14 @@ fun NuvioRemoteRoot(
                             isTunnelActive = isTunnelActive,
                             curtainActive = curtainActive,
                             activeMonitor = activeMonitor,
-                            onStatusClick = {
-                                if (!lastError.isNullOrBlank()) conn.clearError() else navigateToTab(NuvioTab.SETTINGS)
-                            },
+                            lastError = lastError,
+                            hasSavedProfiles = savedProfiles.isNotEmpty(),
+                            privateListeningState = privateListeningState,
+                            activePcName = activePcName,
+                            hapticsEnabled = hapticsEnabled,
+                            onClearError = { conn.clearError() },
+                            onOpenMultiPc = { showMultiPcSheet = true },
+                            onOpenSettings = { navigateToTab(NuvioTab.SETTINGS) },
                             onSelectNuvioState = { conn.sendSetState(it) },
                             onSelectAppsSubTab = { activeAppsSubTab = it },
                             onAltTab = { conn.sendKey("AltTab") },
@@ -252,12 +285,10 @@ fun NuvioRemoteRoot(
                                 activeMonitor = monitor
                                 appPrefs.screenMonitor = monitor
                             },
-                        )
-                        ConnectionErrorBanner(
-                            error = lastError,
-                            onDismiss = {
-                                if (hapticsEnabled) Haptics.tab(context)
-                                conn.clearError()
+                            onOpenPrivateListening = { showPrivateListeningSheet = true },
+                            onStopPrivateListening = {
+                                conn.stopPrivateListening()
+                                showPrivateListeningSheet = false
                             },
                         )
                     }
@@ -315,6 +346,7 @@ fun NuvioRemoteRoot(
                                 onRefreshDiscovery = onRefreshDiscovery,
                                 onConnect = onConnect,
                                 onImmersiveChange = { isScreenImmersive = it },
+                                onOpenPrivateListening = { showPrivateListeningSheet = true },
                                 onOpenCinemaMode = { isCinemaMode = true },
                                 onNavigateTab = ::navigateToTab,
                                 installedVersion = updateController.installedVersion,
@@ -346,8 +378,186 @@ fun NuvioRemoteRoot(
                     onRetry = { updateController.retry() },
                     onCloseError = { updateController.closeModal() },
                 )
+
+                Phase3EcosystemDialogsHost(
+                    showMultiPcSheet = showMultiPcSheet,
+                    showPrivateListeningSheet = showPrivateListeningSheet,
+                    profiles = savedProfiles,
+                    activeProfileId = activeProfileId,
+                    activePcName = activePcName,
+                    conn = conn,
+                    connState = connState,
+                    pingMs = pingMs,
+                    privateListeningState = privateListeningState,
+                    pairing = pairing,
+                    appPrefs = appPrefs,
+                    onProfilesChanged = { profilesRevision += 1 },
+                    onConnect = onConnect,
+                    onOpenSettings = { navigateToTab(NuvioTab.SETTINGS) },
+                    onDismissMultiPc = { showMultiPcSheet = false },
+                    onDismissPrivateListening = { showPrivateListeningSheet = false },
+                )
             }
         }
+    }
+}
+
+@Composable
+private fun NuvioTopChromeSection(
+    currentRoute: NuvioRoute,
+    connState: ConnState,
+    serverState: NuvioScreenState,
+    appsSubTab: AppsSubTab,
+    pingMs: Int,
+    isTunnelActive: Boolean,
+    curtainActive: Boolean,
+    activeMonitor: Int,
+    lastError: String?,
+    hasSavedProfiles: Boolean,
+    privateListeningState: PrivateListeningState,
+    activePcName: String,
+    hapticsEnabled: Boolean,
+    onClearError: () -> Unit,
+    onOpenMultiPc: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onSelectNuvioState: (NuvioScreenState) -> Unit,
+    onSelectAppsSubTab: (AppsSubTab) -> Unit,
+    onAltTab: () -> Unit,
+    onToggleCurtain: () -> Unit,
+    onSelectMonitor: (Int) -> Unit,
+    onOpenPrivateListening: () -> Unit,
+    onStopPrivateListening: () -> Unit,
+) {
+    val context = LocalContext.current
+    NuvioGlassTopBar(
+        currentRoute = currentRoute,
+        connState = connState,
+        serverState = serverState,
+        appsSubTab = appsSubTab,
+        pingMs = pingMs,
+        isTunnelActive = isTunnelActive,
+        curtainActive = curtainActive,
+        activeMonitor = activeMonitor,
+        onStatusClick = {
+            when {
+                !lastError.isNullOrBlank() -> onClearError()
+                hasSavedProfiles -> onOpenMultiPc()
+                else -> onOpenSettings()
+            }
+        },
+        onSelectNuvioState = onSelectNuvioState,
+        onSelectAppsSubTab = onSelectAppsSubTab,
+        onAltTab = onAltTab,
+        onToggleCurtain = onToggleCurtain,
+        onSelectMonitor = onSelectMonitor,
+    )
+    ConnectionErrorBanner(
+        error = lastError,
+        onDismiss = {
+            if (hapticsEnabled) Haptics.tab(context)
+            onClearError()
+        },
+    )
+    if (currentRoute is NuvioRoute.Trackpad || currentRoute is NuvioRoute.Screen) {
+        PrivateListeningBanner(
+            state = privateListeningState,
+            pcName = activePcName,
+            pingMs = pingMs,
+            onOpenSheet = onOpenPrivateListening,
+            onStop = onStopPrivateListening,
+        )
+    }
+}
+
+@Composable
+private fun PrivateListeningServiceEffects(
+    context: android.content.Context,
+    conn: NuvioConnection,
+    privateListeningState: PrivateListeningState,
+    activePcName: String,
+    pingMs: Int,
+    onHideSheet: () -> Unit,
+) {
+    DisposableEffect(conn) {
+        PrivateListeningBridge.onMutePc = { conn.sendWindow("mute_toggle") }
+        PrivateListeningBridge.onStop = {
+            conn.stopPrivateListening()
+            onHideSheet()
+        }
+        onDispose {
+            PrivateListeningBridge.onMutePc = null
+            PrivateListeningBridge.onStop = null
+        }
+    }
+
+    LaunchedEffect(privateListeningState, activePcName) {
+        if (privateListeningState != PrivateListeningState.IDLE) {
+            PrivateListeningService.start(context, activePcName, pingMs)
+        } else {
+            PrivateListeningService.stop(context)
+        }
+    }
+}
+
+@Composable
+private fun Phase3EcosystemDialogsHost(
+    showMultiPcSheet: Boolean,
+    showPrivateListeningSheet: Boolean,
+    profiles: List<com.nuvio.remote.pairing.SavedPcProfile>,
+    activeProfileId: String?,
+    activePcName: String,
+    conn: NuvioConnection,
+    connState: ConnState,
+    pingMs: Int,
+    privateListeningState: PrivateListeningState,
+    pairing: PairingManager,
+    appPrefs: AppPrefs,
+    onProfilesChanged: () -> Unit,
+    onConnect: (host: String, port: Int) -> Unit,
+    onOpenSettings: () -> Unit,
+    onDismissMultiPc: () -> Unit,
+    onDismissPrivateListening: () -> Unit,
+) {
+    if (showMultiPcSheet) {
+        MultiPcSheetDialog(
+            profiles = profiles,
+            activeProfileId = activeProfileId,
+            connState = connState,
+            pingMs = pingMs,
+            onSelectProfile = { target ->
+                onDismissMultiPc()
+                val switched = pairing.switchActiveProfile(target.id) ?: target
+                appPrefs.savedLanHost = switched.host
+                if (switched.tunnelUrl.isNotBlank()) appPrefs.savedTunnelUrl = switched.tunnelUrl
+                onProfilesChanged()
+                onConnect(switched.host, switched.port)
+            },
+            onAddPc = {
+                onDismissMultiPc()
+                onOpenSettings()
+            },
+            onManageProfiles = {
+                onDismissMultiPc()
+                onOpenSettings()
+            },
+            onDismiss = onDismissMultiPc,
+        )
+    }
+
+    if (showPrivateListeningSheet) {
+        PrivateListeningSheetDialog(
+            state = privateListeningState,
+            pcName = activePcName,
+            pingMs = pingMs,
+            onMutePc = { conn.sendWindow("mute_toggle") },
+            onVolumeDown = { conn.sendKey("VolumeDown") },
+            onVolumeUp = { conn.sendKey("VolumeUp") },
+            onStop = {
+                conn.stopPrivateListening()
+                onDismissPrivateListening()
+            },
+            onDismiss = onDismissPrivateListening,
+        )
     }
 }
 
@@ -426,6 +636,7 @@ private fun NuvioRouteHost(
     onRefreshDiscovery: () -> Unit,
     onConnect: (host: String, port: Int) -> Unit,
     onImmersiveChange: (Boolean) -> Unit,
+    onOpenPrivateListening: () -> Unit,
     onOpenCinemaMode: () -> Unit,
     onNavigateTab: (NuvioTab) -> Unit,
     installedVersion: String,
@@ -464,6 +675,7 @@ private fun NuvioRouteHost(
                 onImmersiveChange = onImmersiveChange,
                 curtainActive = curtainActive,
                 onCurtainChange = onCurtainChange,
+                onOpenPrivateListening = onOpenPrivateListening,
             )
             NuvioRoute.Apps -> AppsScreen(
                 subTab = appsSubTab,

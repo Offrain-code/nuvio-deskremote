@@ -2982,6 +2982,9 @@
     </div>
 
     <div class="scenario-strip" id="scenarioStrip">
+      <button class="scen-btn" data-scen="v060-private-listening" onclick="goScenario('v060-private-listening')">Fase 3 • Escuta Privada (Modo PC) <span class="scen-tag">v0.6.0</span></button>
+      <button class="scen-btn" data-scen="v060-share-pc" onclick="goScenario('v060-share-pc')">Fase 3 • Share "Enviar para o PC" (LAN_ONLY) <span class="scen-tag">v0.6.0</span></button>
+      <button class="scen-btn" data-scen="v060-multi-pc" onclick="goScenario('v060-multi-pc')">Fase 3 • Multi-PC (Perfis &amp; Troca Rápida) <span class="scen-tag">v0.6.0</span></button>
       <button class="scen-btn" data-scen="v054-power-shortcuts" onclick="goScenario('v054-power-shortcuts')">v0.5.4 F1 • Energia PC &amp; Atalhos (Mais ▾) <span class="scen-tag">Fase 1</span></button>
       <button class="scen-btn" data-scen="v054-canhoto-tema" onclick="goScenario('v054-canhoto-tema')">v0.5.4 F1 • Trackpad Canhoto &amp; Tema <span class="scen-tag">Fase 1</span></button>
       <button class="scen-btn" data-scen="v054-swipe-pad" onclick="goScenario('v054-swipe-pad')">v0.5.4 F2 • Remote D-Pad | Swipe Pad <span class="scen-tag">Fase 2</span></button>
@@ -3138,7 +3141,11 @@ const ICONS = {
   playlist: '<path d="M4 6h11M4 11h11M4 16h7M17 14v6M14 17h6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>',
   bolt: '<polygon points="13,2 4,14 11,14 10,22 20,10 13,10" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/>',
   lyrics: '<path d="M4 7h11M4 12h8M4 17h10" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/><path d="M17 15V6l4-1v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="15.5" cy="15.5" r="2" stroke="currentColor" stroke-width="1.8" fill="none"/>',
-  qr: '<rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="5.5" y="5.5" width="2" height="2" fill="currentColor"/><rect x="16.5" y="5.5" width="2" height="2" fill="currentColor"/><rect x="5.5" y="16.5" width="2" height="2" fill="currentColor"/><path d="M14 14h3v3h-3zM18 17h3v4h-3zM14 19h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>'
+  qr: '<rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="5.5" y="5.5" width="2" height="2" fill="currentColor"/><rect x="16.5" y="5.5" width="2" height="2" fill="currentColor"/><rect x="5.5" y="16.5" width="2" height="2" fill="currentColor"/><path d="M14 14h3v3h-3zM18 17h3v4h-3zM14 19h3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  headphones: '<path d="M4 13v-1a8 8 0 0 1 16 0v1" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" fill="none"/><rect x="3" y="12.5" width="4" height="6.5" rx="1.8" stroke="currentColor" stroke-width="1.8" fill="none"/><rect x="17" y="12.5" width="4" height="6.5" rx="1.8" stroke="currentColor" stroke-width="1.8" fill="none"/>',
+  share: '<path d="M4 13v5a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/><path d="M12 15V4M8 8l4-4 4 4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
+  fileDoc: '<path d="M7 3h7l4 4v13a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 20V4.5A1.5 1.5 0 0 1 7.5 3z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="M14 3v4h4M9 12h6M9 15.5h4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/>',
+  lock: '<rect x="5" y="10" width="14" height="10" rx="2.2" stroke="currentColor" stroke-width="1.8" fill="none"/><path d="M8 10V7a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" fill="none"/>'
 };
 
 function ico(name, size = 18) {
@@ -3178,6 +3185,21 @@ const state = {
 };
 
 const SCENARIO_META = {
+  'v060-private-listening': {
+    title: 'Fase 3A — Escuta Privada (Áudio do PC no Celular sem Vídeo • Modo PC Exclusivo)',
+    sub: 'Gatilho ≥ 48dp na aba Tela / Mais PC + Folha GlassVariant.REGULAR com status, card 100% opaco, aviso de tela apagada, Mudo/Volume, Encerrar e Notificação Persistente do Android.',
+    tab: 'tela', seg: -1
+  },
+  'v060-share-pc': {
+    title: 'Fase 3B — Share Sheet Expandido ("Enviar para o PC" • Links, Texto e Arquivos LAN_ONLY ≤ 50 MB)',
+    sub: 'Folha flutuante GlassVariant.REGULAR com seletor PC Sala • Wi-Fi ▾, cards 100% opacos de preview (URL, Texto, Arquivo PDF/Foto com progresso) e bloqueio fora do Wi-Fi local (LAN_ONLY).',
+    tab: 'tela', seg: -1
+  },
+  'v060-multi-pc': {
+    title: 'Fase 3C — Multi-PC (Perfis de Computadores Pareados: Folha "Computadores" & Card em Ajustes)',
+    sub: 'Toque na pílula superior abre a folha GlassVariant.REGULAR "Meus Computadores" com lista 100% opaca (Ativo, Disponível, Offline c/ WoL e + Adicionar PC) + gerenciamento completo em Ajustes.',
+    tab: 'ajustes', seg: -1
+  },
   'v054-power-shortcuts': {
     title: 'v0.5.4 Fase 1 — Folha Flutuante "Energia do PC" (Confirmação 2º Toque) & Expansão de Atalhos (Mais ▾)',
     sub: 'Modo PC exclusivo: container externo em GlassVariant.REGULAR, células opacas ContentCellSurface (Bloquear, Suspender, Reiniciar, Desligar com confirmação) + RemoteTextInputBar com 2 sub-linhas de atalhos ≥ 48dp.',
@@ -3311,7 +3333,26 @@ function renderTopHud(scen, opts = {}) {
   const isOffline = opts.wolOffline ?? state.wolOffline;
   let rightHtml = '';
 
-  if (scen === 'update-android' || scen === 'update-android-states') {
+  if (scen === 'v060-private-listening') {
+    rightHtml = `
+      <div class="mode-top-actions">
+        <button class="top-mini-btn active" onclick="setMonitor(1)"><span class="top-mini-vis">PC 1</span></button>
+        <button class="top-mini-btn" onclick="setMonitor(2)"><span class="top-mini-vis">TV 2</span></button>
+      </div>
+    `;
+  } else if (scen === 'v060-share-pc') {
+    rightHtml = `
+      <div class="mode-top-actions">
+        <span class="mode-badge-neutral">Share Sheet • Modo PC</span>
+      </div>
+    `;
+  } else if (scen === 'v060-multi-pc') {
+    rightHtml = `
+      <div class="mode-top-actions">
+        <span class="mode-badge-neutral" style="color:var(--ctx-player);border-color:rgba(196,181,253,0.38);">3 PCs Salvos</span>
+      </div>
+    `;
+  } else if (scen === 'update-android' || scen === 'update-android-states') {
     rightHtml = `
       <div class="mode-top-actions">
         <span class="mode-badge-neutral">GitHub Release • v0.5.0</span>
@@ -3378,9 +3419,19 @@ function renderTopHud(scen, opts = {}) {
     <div class="top-hud-wrap">
       <div class="top-pill">
         <div class="top-pill-bg glass-regular elevated"></div>
-        <div class="hud-conn" onclick="goScenario('ajustes')">
+        <div class="hud-conn" onclick="goScenario('${scen === 'v060-multi-pc' ? 'ajustes' : 'v060-multi-pc'}')">
           <span class="status-dot" style="background:${(isOffline && meta.tab === 'ajustes') || scen === 'onboarding' ? 'var(--status-warn)' : 'var(--status-on)'};"></span>
-          <span class="hud-conn-text">${scen === 'onboarding' ? 'Primeiro acesso • Wi-Fi' : isOffline && meta.tab === 'ajustes' ? 'PC desligado • Acordar' : 'Casa (Wi-Fi) • 2 ms'}</span>
+          <span class="hud-conn-text">${
+            scen === 'onboarding'
+              ? 'Primeiro acesso • Wi-Fi'
+              : scen === 'v060-private-listening'
+              ? 'PC Sala • Escuta 12 ms ▾'
+              : scen === 'v060-multi-pc'
+              ? 'PC Sala • 2 ms ▾'
+              : isOffline && meta.tab === 'ajustes'
+              ? 'PC desligado • Acordar'
+              : 'Casa (Wi-Fi) • 2 ms'
+          }</span>
         </div>
         ${rightHtml}
       </div>
@@ -5891,6 +5942,400 @@ function renderIconesWindow() {
   `;
 }
 
+function renderV060PrivateListening() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+      <!-- 1. GATILHO NA ABA TELA (MODO PC): Card de Status Retrato com Botão "Escuta Privada" >= 48dp -->
+      <section class="content-card" aria-label="Gatilho Escuta Privada na aba Tela" style="padding:6px 9px;border-radius:17px;display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:8.8px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">
+          <span>1. ABA TELA / MAIS PC • GATILHO ESCUTA PRIVADA (≥ 48DP)</span>
+          <span style="color:var(--status-on);">● Modo PC Exclusivo</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1.22fr;gap:6px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('tela-paisagem')">
+            <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:11px;font-size:10.2px;font-weight:700;">
+              ${ico('fullscreen', 13)} Abrir Tela Cheia
+            </span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill primary" style="width:100%;height:34px;border-radius:11px;font-size:10.2px;font-weight:700;">
+              ${ico('headphones', 14)} Escuta Privada: Ativa
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. FOLHA FLUTUANTE "ESCUTA PRIVADA" (GlassVariant.REGULAR + Card Interno 100% Opaco) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Folha Flutuante Escuta Privada" style="border-radius:22px;padding:9px 10px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;">
+          <div style="min-width:0;">
+            <div style="font-size:8.8px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">2. FOLHA ESCUTA PRIVADA (WASAPI LOOPBACK SEM VÍDEO)</div>
+            <div style="font-size:12.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">Escuta Privada • Private Listening</div>
+            <div style="font-size:9.3px;color:var(--text-2);white-space:nowrap;">Áudio do PC no fone/celular • Vídeo desligado</div>
+          </div>
+          <button class="float-close-btn" aria-label="Fechar Escuta Privada" onclick="goScenario('tela-janela')">
+            <span class="float-close-vis content-cell">${ico('close', 14)}</span>
+          </button>
+        </div>
+
+        <!-- Faixa dos 3 Estados de Status (Conectando... / Ativa • PC Sala • 12 ms / Sem áudio) >= 48dp -->
+        <div style="display:grid;grid-template-columns:0.88fr 1.42fr 0.85fr;gap:4px;height:48px;align-items:center;" role="group" aria-label="Estados de status da Escuta Privada">
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:30px;border-radius:999px;padding:0 5px;font-size:9.2px;font-weight:700;color:var(--status-warn);">Conectando…</span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:30px;border-radius:999px;padding:0 6px;font-size:9.5px;font-weight:800;color:var(--status-on);border:1.5px solid var(--status-on);">● Ativa • PC Sala • 12 ms</span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:30px;border-radius:999px;padding:0 5px;font-size:9.2px;font-weight:700;color:var(--text-2);">Sem áudio</span>
+          </button>
+        </div>
+
+        <!-- Card Interno 100% Opaco (ContentCardSurface — ZERO vidro dentro de vidro) -->
+        <div class="content-card" style="padding:7px 9px;border-radius:15px;display:flex;flex-direction:column;gap:5px;">
+          <!-- Indicador Visual Discreto de Áudio (Estático com redução de movimento ativa) -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+            <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+              <div class="content-cell" style="width:32px;height:32px;border-radius:9px;display:flex;align-items:center;justify-content:center;color:var(--status-on);flex-shrink:0;">
+                ${ico('headphones', 16)}
+              </div>
+              <div style="min-width:0;">
+                <div style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">Fone / Alto-falante • Opus 48 kHz</div>
+                <div style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">Estático c/ Redução de Movimento</div>
+              </div>
+            </div>
+            <!-- 5 Barras Estáticas + Badge Textual (Acessível sem depender de animação) -->
+            <div style="display:flex;align-items:center;gap:5px;flex-shrink:0;" aria-label="Nível de áudio ativo">
+              <div style="display:flex;align-items:flex-end;gap:2.5px;height:20px;">
+                <span style="width:3.5px;height:10px;border-radius:2px;background:var(--status-on);"></span>
+                <span style="width:3.5px;height:18px;border-radius:2px;background:var(--status-on);"></span>
+                <span style="width:3.5px;height:13px;border-radius:2px;background:var(--status-on);"></span>
+                <span style="width:3.5px;height:20px;border-radius:2px;background:var(--status-on);"></span>
+                <span style="width:3.5px;height:12px;border-radius:2px;background:var(--status-on);"></span>
+              </div>
+              <span class="s-badge" style="color:var(--status-on);font-size:8.5px;padding:1.5px 5px;">ATIVO</span>
+            </div>
+          </div>
+
+          <!-- Aviso de Tela Apagada (ContentCellSurface 100% opaco) -->
+          <div class="content-cell" style="padding:5px 8px;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span style="font-size:9.8px;font-weight:700;color:var(--text-1);display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+              ${ico('lock', 13)} Continua tocando com a tela apagada
+            </span>
+            <span style="font-size:8.8px;font-weight:600;color:var(--text-3);white-space:nowrap;">Screen-off OK</span>
+          </div>
+
+          <!-- Controles de Mudo PC, Vol - e Vol + (>= 48dp cada) + Indicador de Volume 78% -->
+          <div style="display:grid;grid-template-columns:1.15fr 0.88fr 0.88fr 0.72fr;gap:4px;height:48px;align-items:center;">
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:10px;padding:0 4px;font-size:9.8px;font-weight:700;">
+                ${ico('mute', 13)} Mudo PC
+              </span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:10px;padding:0 4px;font-size:10px;font-weight:700;">
+                ${ico('minus', 13)} Vol −
+              </span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:10px;padding:0 4px;font-size:10px;font-weight:700;">
+                ${ico('plus', 13)} Vol +
+              </span>
+            </button>
+            <div class="content-cell" style="height:34px;border-radius:10px;padding:0 6px;display:flex;flex-direction:column;justify-content:center;gap:3px;">
+              <div style="display:flex;justify-content:space-between;font-size:8.5px;font-weight:800;color:var(--text-1);">
+                <span>VOL</span><span>78%</span>
+              </div>
+              <div style="height:3.5px;border-radius:999px;background:var(--content-card);overflow:hidden;">
+                <div style="width:78%;height:100%;background:var(--ctx-player);"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Botão Principal Encerrar Escuta Privada (>= 48dp) -->
+        <button class="action-btn-48" style="width:100%;" onclick="goScenario('tela-janela')">
+          <span class="vis-pill" style="width:100%;height:36px;border-radius:12px;font-size:10.8px;font-weight:800;background:rgba(248,113,113,0.16);border:1.5px solid var(--status-err);color:var(--status-err);">
+            ${ico('close', 13)} Encerrar Escuta Privada / Stop Private Audio
+          </span>
+        </button>
+      </section>
+
+      <!-- 3. REFERÊNCIA VISUAL DA NOTIFICAÇÃO PERSISTENTE DO ANDROID (ForegroundService) -->
+      <section class="content-card" aria-label="Notificação Persistente do Android para Escuta Privada" style="padding:6px 9px;border-radius:18px;border:1px solid var(--ctx-player);display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:8.8px;font-weight:800;letter-spacing:0.04em;color:var(--ctx-player);">
+          <span>3. NOTIFICAÇÃO PERSISTENTE ANDROID (FOREGROUND SERVICE)</span>
+          <span style="color:var(--text-2);">Tela bloqueada</span>
+        </div>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:48px;">
+          <div style="display:flex;align-items:center;gap:7px;min-width:0;flex:1;">
+            <div style="width:28px;height:28px;border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 28, false)}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">Escuta Privada • PC Sala</div>
+              <div style="font-size:9px;color:var(--text-2);white-space:nowrap;">● 12 ms • Áudio ativo c/ tela apagada</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:4px;flex-shrink:0;">
+            <button class="action-btn-48" style="min-width:58px;">
+              <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;padding:0 8px;font-size:9.8px;font-weight:700;">Mudo</span>
+            </button>
+            <button class="action-btn-48" style="min-width:58px;" onclick="goScenario('tela-janela')">
+              <span class="vis-pill" style="width:100%;height:32px;border-radius:10px;padding:0 8px;font-size:9.8px;font-weight:700;background:rgba(248,113,113,0.16);border:1px solid var(--status-err);color:var(--status-err);">Parar</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV060SharePc() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+      <!-- FOLHA FLUTUANTE "ENVIAR PARA O PC" (GlassVariant.REGULAR sobre app de origem) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Folha Flutuante Enviar para o PC" style="border-radius:22px;padding:9px 10px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        <!-- Cabeçalho com Seletor/Badge do PC Alvo (PC Sala • Wi-Fi ▾) >= 48dp -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;height:48px;">
+          <div style="display:flex;align-items:center;gap:7px;min-width:0;">
+            <div style="width:30px;height:30px;border-radius:9px;overflow:hidden;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              ${renderBrandIconSvg('1', 30, false)}
+            </div>
+            <div style="min-width:0;">
+              <div style="font-size:8.5px;font-weight:800;letter-spacing:0.04em;color:var(--ctx-player);">ANDROID SHARE • MODO PC</div>
+              <div style="font-size:12px;font-weight:800;color:var(--text-1);white-space:nowrap;">Enviar para o PC</div>
+            </div>
+          </div>
+
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+            <button class="action-btn-48" style="min-width:110px;" onclick="goScenario('v060-multi-pc')" aria-label="Selecionar computador alvo">
+              <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:999px;padding:0 8px;font-size:9.5px;font-weight:700;color:var(--status-on);border-color:rgba(52,211,153,0.38);">
+                ● PC Sala • Wi-Fi ▾
+              </span>
+            </button>
+            <button class="float-close-btn" aria-label="Fechar Enviar para o PC" onclick="goScenario('tela-janela')">
+              <span class="float-close-vis content-cell">${ico('close', 14)}</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- PAYLOADS 1 & 2: Card 100% Opaco para Link (URL) e Texto Simples -->
+        <div class="content-card" style="padding:7px 9px;border-radius:14px;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:8.8px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">1. LINK (URL) &amp; 2. TEXTO SIMPLES (100% OPACO)</span>
+            <span class="s-badge accent" style="font-size:8.5px;">LAN / Remoto</span>
+          </div>
+          <div class="content-cell" style="padding:4px 8px;border-radius:9px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+            <span style="font-size:9.6px;font-weight:700;color:var(--text-1);white-space:nowrap;">https://nuvio.app/releases/v0.6.0</span>
+            <span style="font-size:8.8px;color:var(--text-3);font-weight:600;white-space:nowrap;">URL / Texto</span>
+          </div>
+          <!-- Ações de Link e Texto (>= 48dp cada) -->
+          <div style="display:grid;grid-template-columns:1.28fr 0.96fr 0.96fr;gap:4px;height:48px;align-items:center;">
+            <button class="action-btn-48">
+              <span class="vis-pill primary" style="width:100%;height:34px;border-radius:10px;padding:0 4px;font-size:9.3px;font-weight:700;">Abrir no navegador</span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:10px;padding:0 4px;font-size:9.3px;font-weight:700;">Copiar link PC</span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:10px;padding:0 4px;font-size:9.3px;font-weight:700;">Texto → Área PC</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- PAYLOAD 3: Card 100% Opaco para Foto / PDF / Arquivo (LAN_ONLY, limite 50 MB) com Progresso e Sucesso -->
+        <div class="content-card" style="padding:7px 9px;border-radius:14px;display:flex;flex-direction:column;gap:4px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:8.8px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">3. FOTO / PDF / ARQUIVO (LAN_ONLY • MÁX 50 MB)</span>
+            <span class="s-badge" style="color:var(--status-on);border-color:rgba(52,211,153,0.4);font-size:8.5px;">✓ Salvo em Downloads</span>
+          </div>
+
+          <div class="content-cell" style="padding:5px 8px;border-radius:10px;display:flex;flex-direction:column;gap:4px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+              <span style="font-size:10px;font-weight:800;color:var(--text-1);display:inline-flex;align-items:center;gap:5px;white-space:nowrap;">
+                ${ico('fileDoc', 13)} relatorio-arquitetura-q4.pdf
+              </span>
+              <span style="font-size:9px;font-weight:700;color:var(--ctx-player);font-variant-numeric:tabular-nums;white-space:nowrap;">18,4 / 50 MB</span>
+            </div>
+            <div style="height:5px;border-radius:999px;background:var(--content-card);overflow:hidden;">
+              <div style="width:72%;height:100%;border-radius:999px;background:linear-gradient(90deg,var(--status-on),var(--ctx-player));"></div>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;font-size:8.8px;color:var(--text-2);">
+              <span>Enviando: <b>72% (13,2 MB)</b> • Wi-Fi Local</span>
+              <span>Destino: <b>Downloads\\</b></span>
+            </div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1.45fr 0.85fr;gap:6px;height:48px;align-items:center;">
+            <button class="action-btn-48">
+              <span class="vis-pill primary" style="width:100%;height:34px;border-radius:10px;padding:0 6px;font-size:9.8px;font-weight:700;">
+                ${ico('share', 13)} Salvar em Downloads do PC
+              </span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:10px;padding:0 6px;font-size:9.8px;font-weight:700;">
+                Cancelar
+              </span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ESTADO DE BLOQUEIO FORA DA LAN (LAN_ONLY Enforcement para Arquivos) -->
+      <section class="content-card" aria-label="Estado de bloqueio fora da rede Wi-Fi local LAN_ONLY" style="padding:7px 9px;border-radius:18px;border:1.5px solid var(--status-warn);display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:8.8px;font-weight:800;letter-spacing:0.04em;color:var(--status-warn);">BLOQUEIO FORA DO WI-FI LOCAL (4G/5G TUNNEL)</span>
+          <span class="s-badge" style="color:var(--status-warn);border-color:rgba(251,191,36,0.42);font-size:8.5px;">LAN_ONLY • 50 MB</span>
+        </div>
+        <div class="content-cell" style="padding:5px 8px;border-radius:10px;display:flex;flex-direction:column;gap:1px;">
+          <div style="font-size:9px;font-weight:800;color:var(--status-warn);white-space:nowrap;">
+            Envio de arquivos só no Wi-Fi de casa (LAN_ONLY)
+          </div>
+          <div style="font-size:8.6px;color:var(--text-2);white-space:nowrap;">
+            EN: File transfer is blocked outside home Wi-Fi (max 50 MB).
+          </div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.35fr 0.90fr;gap:6px;height:48px;align-items:center;">
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;font-size:9.5px;font-weight:700;color:var(--text-3);">
+              ${ico('lock', 12)} Arquivo bloqueado (4G/5G)
+            </span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('tela-janela')">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;font-size:9.8px;font-weight:700;">
+              Fechar / Close
+            </span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV060MultiPc() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+      <!-- 1. FOLHA FLUTUANTE "COMPUTADORES" (Aberta pela Pílula Superior NuvioGlassTopBar — GlassVariant.REGULAR) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Folha Flutuante Meus Computadores" style="border-radius:22px;padding:8px 10px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;">
+          <div style="min-width:0;">
+            <div style="font-size:8.6px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">1. PÍLULA SUPERIOR → FOLHA "COMPUTADORES" (1 TOQUE)</div>
+            <div style="font-size:12.2px;font-weight:800;color:var(--text-1);white-space:nowrap;">Meus Computadores • My Computers</div>
+            <div style="font-size:9px;color:var(--text-2);white-space:nowrap;">Lista interna 100% opaca (zero vidro) • Troca imediata</div>
+          </div>
+          <button class="float-close-btn" aria-label="Fechar Meus Computadores" onclick="goScenario('ajustes')">
+            <span class="float-close-vis content-cell">${ico('close', 14)}</span>
+          </button>
+        </div>
+
+        <!-- Lista 100% Opaca de Perfis Pareados (ContentCardSurface / ContentCellSurface) -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          <!-- PC 1: PC Sala • Ativo • 2 ms • Wi-Fi -->
+          <div class="content-card" style="padding:2px 6px 2px 9px;border-radius:13px;border:1.5px solid var(--status-on);display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:48px;">
+            <button style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:1px;cursor:pointer;font-family:var(--font-ui);">
+              <span style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Sala • Ativo • 2 ms • Wi-Fi</span>
+              <span style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">192.168.1.42 • Ponte Nuvio 47321 Sincronizada</span>
+            </button>
+            <span class="s-badge" style="color:var(--status-on);border-color:rgba(52,211,153,0.4);flex-shrink:0;">● Conectado</span>
+          </div>
+
+          <!-- PC 2: PC Escritório • Disponível • Wi-Fi (Troca com 1 toque) -->
+          <div class="content-cell" style="padding:2px 5px 2px 9px;border-radius:13px;display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
+            <button style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:1px;cursor:pointer;font-family:var(--font-ui);">
+              <span style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Escritório • Disponível • Wi-Fi</span>
+              <span style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">192.168.1.88 • Toque para alternar agora</span>
+            </button>
+            <button class="action-btn-48" style="min-width:74px;">
+              <span class="vis-pill content-card" style="width:100%;height:32px;border-radius:10px;padding:0 8px;font-size:9.5px;font-weight:700;">Alternar</span>
+            </button>
+          </div>
+
+          <!-- PC 3: HTPC Quarto • Offline (com botão Acordar WoL >= 48dp) -->
+          <div class="content-cell" style="padding:2px 5px 2px 9px;border-radius:13px;border-color:rgba(251,191,36,0.38);display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
+            <button style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:1px;cursor:pointer;font-family:var(--font-ui);">
+              <span style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">HTPC Quarto • Offline</span>
+              <span style="font-size:8.8px;color:var(--status-warn);font-weight:600;white-space:nowrap;">● Em espera • MAC salvo p/ Wake-on-LAN</span>
+            </button>
+            <button class="action-btn-48" style="min-width:98px;">
+              <span class="vis-pill primary" style="width:100%;height:32px;border-radius:10px;padding:0 7px;font-size:9.5px;font-weight:700;">
+                ${ico('bolt', 12)} Acordar (WoL)
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Rodapé da Folha: + Adicionar PC (>= 48dp) & Gerenciar em Ajustes -->
+        <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:6px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('ajustes')">
+            <span class="vis-pill primary" style="width:100%;height:34px;border-radius:11px;font-size:10px;font-weight:800;">
+              ${ico('plus', 13)} Adicionar PC / Add PC
+            </span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('ajustes')">
+            <span class="vis-pill content-cell" style="width:100%;height:34px;border-radius:11px;font-size:10px;font-weight:700;">
+              Gerenciar Perfis
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. CARD "CONEXÃO COM O COMPUTADOR" EVOLUÍDO EM AJUSTES (100% Opaco ContentCardSurface) -->
+      <section class="content-card" aria-label="Card Conexão com o Computador em Ajustes com Multi-PC" style="padding:7px 9px;border-radius:19px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:8.8px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">2. AJUSTES &gt; CONEXÃO COM O COMPUTADOR (PERFIS SALVOS)</span>
+          <span class="s-badge accent" style="font-size:8.5px;">Conectar • Renomear • Remover</span>
+        </div>
+
+        <!-- Linha de Gerenciamento 1: PC Sala (Ativo) com Renomear e Remover (>= 48dp) -->
+        <div class="content-cell" style="padding:2px 4px 2px 8px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Sala <span style="color:var(--status-on);">(● Ativo)</span></div>
+            <div style="font-size:8.6px;color:var(--text-2);white-space:nowrap;">192.168.1.42:8787 • Token SHA-256</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+            <button class="action-btn-48" style="min-width:66px;">
+              <span class="vis-pill content-card" style="width:100%;height:30px;border-radius:9px;padding:0 6px;font-size:9.2px;font-weight:700;">Renomear</span>
+            </button>
+            <button class="action-btn-48" style="min-width:62px;">
+              <span class="vis-pill content-card" style="width:100%;height:30px;border-radius:9px;padding:0 6px;font-size:9.2px;font-weight:700;">Remover</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Linha de Gerenciamento 2: PC Escritório com Conectar e Confirmação Segura para Remover (2º toque) -->
+        <div class="content-cell" style="padding:2px 4px 2px 8px;border-radius:12px;border:1px solid rgba(248,113,113,0.42);display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Escritório</div>
+            <div style="font-size:8.6px;color:var(--status-err);font-weight:700;white-space:nowrap;">Confirmar remoção? (2º toque)</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
+            <button class="action-btn-48" style="min-width:62px;">
+              <span class="vis-pill content-card" style="width:100%;height:30px;border-radius:9px;padding:0 6px;font-size:9.2px;font-weight:700;">Conectar</span>
+            </button>
+            <button class="action-btn-48" style="min-width:70px;">
+              <span class="vis-pill" style="width:100%;height:30px;border-radius:9px;padding:0 6px;font-size:9.2px;font-weight:800;background:rgba(248,113,113,0.16);border:1px solid var(--status-err);color:var(--status-err);">Confirmar?</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Barra Inferior Canônica de Pareamento em Ajustes: Buscar Wi-Fi, Escanear QR e Parear PIN (>= 48dp) -->
+        <div style="display:grid;grid-template-columns:1fr 1.1fr 0.95fr;gap:5px;height:48px;align-items:center;">
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;padding:0 4px;font-size:9.5px;font-weight:700;">Buscar Wi-Fi</span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('ajustes-qr-tile')">
+            <span class="vis-pill primary" style="width:100%;height:32px;border-radius:10px;padding:0 4px;font-size:9.5px;font-weight:700;">${ico('qr', 12)} Escanear QR</span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;padding:0 4px;font-size:9.5px;font-weight:700;">Parear PIN</span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderV054PowerAndShortcuts() {
   const powerActions = [
     { id: 'lock', title: 'Bloquear / Lock', sub: 'Win+L • Imediato (1 toque)', tag: '1 toque', icon: 'focus', armed: false, danger: false },
@@ -6724,7 +7169,13 @@ function renderPhoneHtml(scen, opts = {}) {
   const meta = SCENARIO_META[scen];
   const activeSheet = opts.playerSheet !== undefined ? opts.playerSheet : (meta.seg === 1 ? state.playerSheet : '');
   let innerBody = '';
-  if (scen === 'v054-power-shortcuts') {
+  if (scen === 'v060-private-listening') {
+    innerBody = renderV060PrivateListening();
+  } else if (scen === 'v060-share-pc') {
+    innerBody = renderV060SharePc();
+  } else if (scen === 'v060-multi-pc') {
+    innerBody = renderV060MultiPc();
+  } else if (scen === 'v054-power-shortcuts') {
     innerBody = renderV054PowerAndShortcuts();
   } else if (scen === 'v054-canhoto-tema') {
     innerBody = renderV054CanhotoAndTheme();
@@ -6788,9 +7239,30 @@ function renderPhoneHtml(scen, opts = {}) {
   `;
 }
 
-// ==================== PAINEL OVERVIEW (v0.5.4 + AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
+// ==================== PAINEL OVERVIEW (v0.6.0 FASE 3 + v0.5.4 + AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
 function renderOverviewHtml() {
   return `
+    <section class="overview-section" id="overviewV060Section" style="width:1180px;max-width:none;margin-left:calc(50% - 590px);">
+      <div class="overview-section-head">
+        <h2>v0.6.0 Fase 3 — Diferenciais de Ecossistema: Escuta Privada (Modo PC), Share Sheet "Enviar para o PC" (LAN_ONLY ≤ 50 MB) &amp; Multi-PC (Perfis Pareados)</h2>
+        <span>Liquid Glass estrito (zero Material 3) • Vidro só na camada flutuante • Listas, cards e previews 100% opacos • Alvos ≥ 48dp • WCAG AA Claro/Escuro</span>
+      </div>
+      <div class="overview-row" style="flex-wrap:nowrap;gap:18px;">
+        <div class="ov-item">
+          <div class="ov-label">F3A. Modo PC • Escuta Privada (Áudio sem Vídeo + Tela Apagada)</div>
+          ${renderPhoneHtml('v060-private-listening')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F3B. Modo PC • Share Sheet "Enviar para o PC" (URL, Texto &amp; Arquivo LAN_ONLY)</div>
+          ${renderPhoneHtml('v060-share-pc')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F3C. Sistema • Multi-PC (Folha "Computadores" 1 Toque &amp; Card em Ajustes)</div>
+          ${renderPhoneHtml('v060-multi-pc')}
+        </div>
+      </div>
+    </section>
+
     <section class="overview-section" id="overviewV054Section" style="width:1940px;max-width:none;margin-left:calc(50% - 970px);">
       <div class="overview-section-head">
         <h2>v0.5.4. Melhorias de UI/UX Pós-Pesquisa de Mercado — Fase 1 (Energia PC, Atalhos Mais ▾, Canhoto &amp; Tema) e Fase 2 (Swipe Pad, Mini-Player Opaco &amp; Widgets)</h2>

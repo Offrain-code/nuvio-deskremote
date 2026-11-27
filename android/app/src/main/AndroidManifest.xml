@@ -60,8 +60,44 @@
             </intent-filter>
         </activity>
 
+        <!-- Android Share target: sends links, text, or LAN files to the Windows PC -->
+        <activity
+            android:name=".share.ShareToPcActivity"
+            android:exported="true"
+            android:label="@string/share_send_to_pc"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="image/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/pdf" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
         <service
             android:name=".media.NowPlayingMediaService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+
+        <service
+            android:name=".media.PrivateListeningService"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
 

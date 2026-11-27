@@ -122,6 +122,7 @@ fun ScreenShareScreen(
     modifier: Modifier = Modifier,
     curtainActive: Boolean = false,
     onCurtainChange: (Boolean) -> Unit = {},
+    onOpenPrivateListening: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
@@ -166,6 +167,8 @@ fun ScreenShareScreen(
         )
     }
 
+    val privateListeningState by conn.privateListeningState.collectAsState()
+    val privateListeningActive = privateListeningState != com.nuvio.remote.connection.PrivateListeningState.IDLE
     ScreenShareStreamSyncEffects(
         context = context,
         controller = controller,
@@ -173,7 +176,7 @@ fun ScreenShareScreen(
         answerSdp = answerSdp,
         defaultProfile = defaultProfile,
         activeMonitor = activeMonitor,
-        isStreamEligible = connState is ConnState.Connected && appInForeground,
+        isStreamEligible = connState is ConnState.Connected && appInForeground && !privateListeningActive,
         reconnectTick = uiState.reconnectTick,
         clipboardTick = clipboardTick,
         remoteClipboard = remoteClipboard,
@@ -294,6 +297,15 @@ fun ScreenShareScreen(
                 uiState.toggleOrientation(activity, isLandscape) { manualFullscreen = false }
             },
             onReconnect = { uiState.reconnectTick++ },
+            privateListeningActive = privateListeningActive,
+            onTogglePrivateListening = {
+                if (!privateListeningActive) {
+                    controller.stop()
+                    conn.screenStop()
+                    conn.startPrivateListening()
+                }
+                onOpenPrivateListening()
+            },
             modifier = modifier,
         )
     }

@@ -186,6 +186,9 @@ class NuvioConnection(
     private val _screenStatus = MutableStateFlow("stopped")
     val screenStatus: StateFlow<String> = _screenStatus
 
+    private val _privateListeningState = MutableStateFlow(PrivateListeningState.IDLE)
+    val privateListeningState: StateFlow<PrivateListeningState> = _privateListeningState
+
     /** Real-time decoded MJPEG fallback frame for the Screen tab. */
     private val _screenFrame = MutableStateFlow<Bitmap?>(null)
     val screenFrame: StateFlow<Bitmap?> = _screenFrame
@@ -348,7 +351,11 @@ class NuvioConnection(
     }
 
     private fun handlePcmAudioPacket(bytes: ByteString) {
-        if (!_screenAudioEnabled.value) return
+        val inPrivateAudio = _privateListeningState.value != PrivateListeningState.IDLE
+        if (!_screenAudioEnabled.value && !inPrivateAudio) return
+        if (inPrivateAudio && _privateListeningState.value != PrivateListeningState.ACTIVE) {
+            _privateListeningState.value = PrivateListeningState.ACTIVE
+        }
         val pcm = bytes.toByteArray()
         val track = ensureAudioTrack() ?: return
         val written = synchronized(audioLock) {
@@ -573,6 +580,7 @@ class NuvioConnection(
                 if (socketGen.get() != myGen) return
                 heartbeatJob?.cancel()
                 stopAudioTrack()
+                _privateListeningState.value = PrivateListeningState.IDLE
                 latestFramePacket = null
                 publishScreenFrame(null)
                 bridge.resetOnDisconnect()
@@ -595,6 +603,7 @@ class NuvioConnection(
                 if (socketGen.get() != myGen) return
                 heartbeatJob?.cancel()
                 stopAudioTrack()
+                _privateListeningState.value = PrivateListeningState.IDLE
                 latestFramePacket = null
                 publishScreenFrame(null)
                 bridge.resetOnDisconnect()
@@ -737,6 +746,7 @@ class NuvioConnection(
         heartbeatJob?.cancel()
         socketGen.incrementAndGet()
         stopAudioTrack()
+        _privateListeningState.value = PrivateListeningState.IDLE
         ws?.close(1000, "app closing")
         ws = null
         runCatching { udpSocket?.close() }
@@ -1005,10 +1015,33 @@ class NuvioConnection(
         publishScreenFrame(null)
         _needFallbackCursor.value = false
         _screenStatus.value = "stopped"
-        stopAudioTrack()
+        if (_privateListeningState.value == PrivateListeningState.IDLE) {
+            stopAudioTrack()
+        }
         val currentWs = ws
         if (currentWs == null || _connState.value !is ConnState.Connected) return false
         return currentWs.send(JSONObject().put("type", "screen_stop").toString())
+    }
+
+    /** Starts audio-only WASAPI loopback streaming (PC Mode Private Listening, DESIGN-SPEC §5.14.1). */
+    fun startPrivateListening(): Boolean {
+        _privateListeningState.value = PrivateListeningState.CONNECTING
+        val ok = send("private_audio_start")
+        if (!ok) {
+            _privateListeningState.value = PrivateListeningState.IDLE
+        }
+        return ok
+    }
+
+    /** Stops audio-only Private Listening and releases AudioTrack if Screen Share is not running. */
+    fun stopPrivateListening(): Boolean {
+        _privateListeningState.value = PrivateListeningState.IDLE
+        if (_screenStatus.value == "stopped") {
+            stopAudioTrack()
+        }
+        val currentWs = ws
+        if (currentWs == null || _connState.value !is ConnState.Connected) return false
+        return currentWs.send(JSONObject().put("type", "private_audio_stop").toString())
     }
 
     /** Sends a trickle ICE candidate from the app to the server. */
@@ -1096,6 +1129,15 @@ class NuvioConnection(
                 )
             }
             "screen_status" -> handleScreenStatus(obj)
+            "private_audio_status" -> {
+                val active = obj.optBoolean("active", false)
+                _privateListeningState.value = if (active) {
+                    PrivateListeningState.ACTIVE
+                } else {
+                    if (_screenStatus.value == "stopped") stopAudioTrack()
+                    PrivateListeningState.IDLE
+                }
+            }
             "screen_frame" -> {
                 val b64 = obj.optString("data", "")
                 if (b64.isNotEmpty()) {
@@ -1138,7 +1180,9 @@ class NuvioConnection(
             latestFramePacket = null
             publishScreenFrame(null)
             _needFallbackCursor.value = false
-            stopAudioTrack()
+            if (_privateListeningState.value == PrivateListeningState.IDLE) {
+                stopAudioTrack()
+            }
         }
     }
 }

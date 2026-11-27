@@ -26,6 +26,7 @@ import androidx.compose.material.icons.rounded.CenterFocusStrong
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.ContentPaste
 import androidx.compose.material.icons.rounded.Fullscreen
+import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.SwapHoriz
@@ -79,6 +80,8 @@ internal fun PortraitScreenShareContent(
     onEnterFullscreen: () -> Unit,
     onRotateLandscape: () -> Unit,
     onReconnect: () -> Unit,
+    privateListeningActive: Boolean = false,
+    onTogglePrivateListening: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val scheme = LocalNuvioColors.current
@@ -140,6 +143,8 @@ internal fun PortraitScreenShareContent(
                 moreCallbacks = moreCallbacks,
                 onReconnect = onReconnect,
                 onEnterFullscreen = onEnterFullscreen,
+                privateListeningActive = privateListeningActive,
+                onTogglePrivateListening = onTogglePrivateListening,
             )
         }
     }
@@ -215,6 +220,8 @@ private fun PortraitStatusControlCard(
     moreCallbacks: MorePcMenuCallbacks,
     onReconnect: () -> Unit,
     onEnterFullscreen: () -> Unit,
+    privateListeningActive: Boolean = false,
+    onTogglePrivateListening: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -303,6 +310,27 @@ private fun PortraitStatusControlCard(
                 onClick = {
                     if (hapticsEnabled) Haptics.toggle(context)
                     moreCallbacks.onToggleAudio()
+                },
+                modifier = Modifier.weight(1f),
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            PortraitCompactPill(
+                label = if (privateListeningActive) {
+                    l10n("Private Audio: On", "Escuta Privada: Ativa")
+                } else {
+                    l10n("Private Listening", "Escuta Privada")
+                },
+                icon = Icons.Rounded.Headphones,
+                highlighted = privateListeningActive,
+                visualHeight = 38.dp,
+                onClick = {
+                    if (hapticsEnabled) Haptics.toggle(context)
+                    onTogglePrivateListening()
                 },
                 modifier = Modifier.weight(1f),
             )

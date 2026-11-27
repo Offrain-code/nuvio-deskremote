@@ -14,6 +14,7 @@ import { ScreenStateMachine } from './state';
 import { InputInjector } from './injection/input';
 import { getClipboardTextNative, setClipboardTextNative } from './injection/win32';
 import { PinManager, TokenStore } from './auth';
+import { AudioLoopbackStreamer } from './screen/audioLoopback';
 import { ScreenServer } from './screen/screenServer';
 import { GdiCapture } from './screen/capture';
 import { TunnelManager } from './tunnel';
@@ -40,7 +41,7 @@ import type {
 } from './protocol';
 
 const SERVER_NAME = 'nuvio-deskremote-companion';
-const SERVER_VERSION = '0.5.4';
+const SERVER_VERSION = '0.6.0';
 const DISCOVERY_UDP_PORT = 8766;
 const PAIRING_HTTP_PORT = 8765;
 const MOUSE_UDP_PORT = 8768;
@@ -48,6 +49,57 @@ const MAX_WS_PAYLOAD_BYTES = 1024 * 1024; // 1 MiB
 const MAX_UNAUTHED_WS_CONNECTIONS = 16;
 const MAX_TYPE_TEXT_CHARS = 8192;
 const MAX_CLIPBOARD_BYTES = 128 * 1024; // 128 KiB
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024; // 50 MiB (LAN_ONLY)
+
+/** Validates an http/https URL safe to open in the Windows default browser. */
+export function validateHttpUrl(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 2048 || /[\r\n\u0000]/.test(trimmed)) return null;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+/** Sanitizes an uploaded filename to prevent path traversal and invalid Windows characters. */
+export function sanitizeUploadFilename(rawHeader: string | undefined): string {
+  let decoded = '';
+  if (typeof rawHeader === 'string' && rawHeader.trim().length > 0) {
+    try {
+      decoded = decodeURIComponent(rawHeader.trim());
+    } catch {
+      decoded = rawHeader.trim();
+    }
+  }
+  const base = path.basename(decoded.replace(/\\/g, '/'));
+  const cleaned = base
+    .replace(/[<>:"/\\|?*\u0000-\u001F]/g, '_')
+    .replace(/^\.+/, '')
+    .trim()
+    .slice(0, 140);
+  if (!cleaned || cleaned === '.' || cleaned === '..') {
+    return `nuvio-upload-${Date.now()}.bin`;
+  }
+  return cleaned;
+}
+
+function resolveUniqueDownloadPath(downloadsDir: string, filename: string): { fullPath: string; finalName: string } {
+  const ext = path.extname(filename);
+  const stem = ext ? filename.slice(0, -ext.length) : filename;
+  let candidate = filename;
+  let fullPath = path.join(downloadsDir, candidate);
+  let counter = 1;
+  while (fs.existsSync(fullPath) && counter < 1000) {
+    candidate = `${stem} (${counter})${ext}`;
+    fullPath = path.join(downloadsDir, candidate);
+    counter += 1;
+  }
+  return { fullPath, finalName: candidate };
+}
 
 interface SocketWithMeta extends ws.WebSocket {
   _id?: string;
@@ -57,6 +109,7 @@ interface SocketWithMeta extends ws.WebSocket {
   _isTunnel?: boolean;
   _authed?: boolean;
   _wantsScreen?: boolean;
+  _wantsPrivateAudio?: boolean;
   _mjpegInFlight?: boolean;
   _lastCursorPushMs?: number;
   _remoteAddr?: string;
@@ -73,6 +126,8 @@ export class CompanionServer {
   private localIpcToken: string;
   private authorizedClientIps: Set<string> = new Set();
   private screen: ScreenServer;
+  private privateAudio: AudioLoopbackStreamer | null = null;
+  private privateAudioOwnerId: string | null = null;
   private logtail: NuvioLogTail | null;
   private bridge: NuvioBridge | null;
   private tunnel: TunnelManager | null = null;
@@ -214,6 +269,7 @@ export class CompanionServer {
           this.sockets.delete(s);
           this.rebuildAuthorizedClientIps();
           this.screen.stopIfOwner(socketId(s));
+          this.stopPrivateAudio(socketId(s), 'client missed ping');
           continue;
         }
         s._isAlive = false;
@@ -411,6 +467,7 @@ export class CompanionServer {
       clearInterval(this.cursorWatchTimer);
       this.cursorWatchTimer = null;
     }
+    this.stopPrivateAudio(undefined, 'server shutdown');
     for (const s of this.sockets) {
       if (s._authTimer) {
         clearTimeout(s._authTimer);
@@ -898,6 +955,84 @@ export class CompanionServer {
       return;
     }
 
+    if (req.method === 'POST' && req.url === '/api/v1/pc/upload') {
+      if (isRequestFromTunnel(req) || !isPrivateOrLoopback(remote)) {
+        res.writeHead(403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'LAN_ONLY', message: 'File upload is restricted to local Wi-Fi (LAN_ONLY).' }));
+        return;
+      }
+      const bearerDev = this.getBearerDevice(req, remote);
+      if (!bearerDev) {
+        res.writeHead(401, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'AUTH_REQUIRED', message: 'Valid paired Bearer token required.' }));
+        return;
+      }
+      const contentLen = Number(req.headers['content-length'] ?? 0);
+      if (Number.isFinite(contentLen) && contentLen > MAX_UPLOAD_BYTES) {
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'PAYLOAD_TOO_LARGE', max_bytes: MAX_UPLOAD_BYTES }));
+        return;
+      }
+      const rawName = Array.isArray(req.headers['x-file-name'])
+        ? req.headers['x-file-name'][0]
+        : req.headers['x-file-name'];
+      const safeName = sanitizeUploadFilename(rawName);
+      const downloadsDir = path.join(os.homedir(), 'Downloads');
+      try {
+        fs.mkdirSync(downloadsDir, { recursive: true });
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'IO_ERROR', message: (err as Error).message }));
+        return;
+      }
+      const { fullPath, finalName } = resolveUniqueDownloadPath(downloadsDir, safeName);
+      const writeStream = fs.createWriteStream(fullPath);
+      let received = 0;
+      let aborted = false;
+
+      const failUpload = (status: number, payload: Record<string, unknown>) => {
+        if (aborted) return;
+        aborted = true;
+        writeStream.destroy();
+        try { fs.unlinkSync(fullPath); } catch { /* ignore */ }
+        if (!res.headersSent) {
+          res.writeHead(status, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify(payload));
+        }
+      };
+
+      req.on('data', (chunk: Buffer) => {
+        if (aborted) return;
+        received += chunk.length;
+        if (received > MAX_UPLOAD_BYTES) {
+          failUpload(413, { error: 'PAYLOAD_TOO_LARGE', max_bytes: MAX_UPLOAD_BYTES });
+          req.destroy();
+          return;
+        }
+        if (!writeStream.write(chunk)) {
+          req.pause();
+          writeStream.once('drain', () => {
+            if (!aborted) req.resume();
+          });
+        }
+      });
+
+      req.on('error', () => failUpload(400, { error: 'UPLOAD_ABORTED' }));
+      req.on('aborted', () => failUpload(499, { error: 'UPLOAD_ABORTED' }));
+      writeStream.on('error', (err) => failUpload(500, { error: 'IO_ERROR', message: err.message }));
+
+      req.on('end', () => {
+        if (aborted) return;
+        writeStream.end(() => {
+          if (aborted || res.headersSent) return;
+          info(`share: saved ${finalName} (${received} bytes) to Downloads from "${bearerDev.deviceName}"`);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ ok: true, filename: finalName, bytes: received, saved_dir: 'Downloads' }));
+        });
+      });
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'NOT_FOUND' }));
   }
@@ -947,6 +1082,57 @@ export class CompanionServer {
       this.tunnel = null;
       info('tunnel: Remote Access disabled');
       this.broadcastAuthed({ type: 'tunnel', url: '' });
+    }
+  }
+
+  /** Starts audio-only WASAPI loopback streaming (no video capture) for Private Listening. */
+  private startPrivateAudio(socket: SocketWithMeta): void {
+    const ownerId = socketId(socket);
+    if (!ownerId) return;
+    if (this.screen.isRunning()) {
+      this.screen.stop('switched to Private Listening');
+      for (const s of this.sockets) s._wantsScreen = false;
+    }
+    for (const s of this.sockets) s._wantsPrivateAudio = false;
+    socket._wantsPrivateAudio = true;
+
+    if (this.privateAudio && this.privateAudioOwnerId === ownerId && this.privateAudio.isRunning()) {
+      this.reply(socket, { type: 'private_audio_status', active: true, detail: 'wasapi-loopback' });
+      return;
+    }
+    this.privateAudio?.stop();
+    this.privateAudioOwnerId = ownerId;
+    this.privateAudio = new AudioLoopbackStreamer((pcmPacket) => {
+      if (this.privateAudioOwnerId !== ownerId) return;
+      for (const s of this.sockets) {
+        if (s.readyState === ws.WebSocket.OPEN && s._authed && s._wantsPrivateAudio && socketId(s) === ownerId) {
+          const maxAudioBuffered = s._isTunnel ? 448 * 1024 : 1024 * 1024;
+          if (s.bufferedAmount < maxAudioBuffered) {
+            s.send(pcmPacket, { binary: true });
+          }
+        }
+      }
+    });
+    this.privateAudio.start();
+    info(`audio: Private Listening started for ${socket._deviceName ?? ownerId} (video off)`);
+    this.reply(socket, { type: 'private_audio_status', active: true, detail: 'wasapi-loopback' });
+  }
+
+  /** Stops Private Listening loopback capture if active (optionally scoped to ownerId). */
+  private stopPrivateAudio(ownerId?: string, reason = 'stopped'): void {
+    if (ownerId && this.privateAudioOwnerId !== ownerId) return;
+    const wasActive = this.privateAudio !== null || this.privateAudioOwnerId !== null;
+    this.privateAudio?.stop();
+    this.privateAudio = null;
+    this.privateAudioOwnerId = null;
+    for (const s of this.sockets) {
+      if (!ownerId || socketId(s) === ownerId) {
+        s._wantsPrivateAudio = false;
+      }
+    }
+    if (wasActive) {
+      info(`audio: Private Listening stopped (${reason})`);
+      this.broadcastAuthed({ type: 'private_audio_status', active: false, detail: reason });
     }
   }
 
@@ -1164,9 +1350,11 @@ export class CompanionServer {
         this.injector.releaseHeldMouseButtons();
       }
       socket._wantsScreen = false;
+      socket._wantsPrivateAudio = false;
       this.sockets.delete(socket);
       this.rebuildAuthorizedClientIps();
       this.screen.stopIfOwner(id);
+      this.stopPrivateAudio(id, 'client disconnected');
     };
 
     socket.on('close', (code, reason) => {
@@ -1406,6 +1594,7 @@ export class CompanionServer {
         return;
       }
       case 'screen_start': {
+        this.stopPrivateAudio(undefined, 'switched to Screen Share');
         for (const s of this.sockets) s._wantsScreen = false;
         socket._wantsScreen = true;
         if (typeof msg.audio === 'boolean') {
@@ -1436,6 +1625,33 @@ export class CompanionServer {
       case 'screen_audio':
         this.screen.setAudioEnabled(Boolean(msg.enabled));
         return;
+      case 'private_audio_start':
+        this.startPrivateAudio(socket);
+        return;
+      case 'private_audio_stop':
+        this.stopPrivateAudio(socketId(socket), 'client private_audio_stop');
+        return;
+      case 'pc_open_url': {
+        const safeUrl = validateHttpUrl(msg.url);
+        if (!safeUrl) {
+          this.reply(socket, { type: 'pc_open_url_result', ok: false, error: 'INVALID_URL' });
+          return;
+        }
+        try {
+          const child = spawn('rundll32.exe', ['url.dll,FileProtocolHandler', safeUrl], {
+            detached: true,
+            stdio: 'ignore',
+            windowsHide: true,
+          });
+          child.unref();
+          info(`share: opened URL in default browser (${safeUrl.slice(0, 80)})`);
+          this.reply(socket, { type: 'pc_open_url_result', ok: true });
+        } catch (err) {
+          warn(`share: failed to open URL: ${(err as Error).message}`);
+          this.reply(socket, { type: 'pc_open_url_result', ok: false, error: 'OPEN_FAILED' });
+        }
+        return;
+      }
       case 'screen_webrtc_state':
         this.screen.setWebRtcLive(socketId(socket), Boolean(msg.live));
         return;

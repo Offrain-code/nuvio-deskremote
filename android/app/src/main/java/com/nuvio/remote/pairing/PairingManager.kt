@@ -86,6 +86,106 @@ class PairingManager(context: Context) {
     /** Returns true when a valid cryptographic session token is saved. */
     fun isPaired(): Boolean = savedToken.startsWith("nuvio_sec_") && savedToken.length >= 32
 
+    var activeProfileId: String?
+        get() = prefs.getString(KEY_ACTIVE_PROFILE_ID, null)?.takeIf { it.isNotBlank() }
+        set(value) {
+            if (value.isNullOrBlank()) {
+                prefs.edit().remove(KEY_ACTIVE_PROFILE_ID).apply()
+            } else {
+                prefs.edit().putString(KEY_ACTIVE_PROFILE_ID, value.trim()).apply()
+            }
+        }
+
+    /** Returns all saved PC profiles, auto-migrating any legacy single-PC pairing on first read. */
+    fun savedProfiles(): List<SavedPcProfile> {
+        val decoded = SavedPcProfileCodec.decode(prefs.getString(KEY_PROFILES_JSON, null))
+        if (decoded.isNotEmpty()) return decoded
+        val legacyHost = savedHost?.trim().orEmpty()
+        val legacyToken = savedToken
+        if (legacyHost.isEmpty() || legacyToken.isBlank()) return emptyList()
+        val migrated = SavedPcProfile(
+            id = UUID.randomUUID().toString(),
+            name = defaultProfileName(savedServerId, legacyHost),
+            host = legacyHost,
+            port = 8787,
+            serverId = savedServerId.orEmpty(),
+            token = legacyToken,
+            lastConnectedAtMs = System.currentTimeMillis(),
+        )
+        persistProfiles(listOf(migrated), migrated.id)
+        return listOf(migrated)
+    }
+
+    fun activeProfile(): SavedPcProfile? {
+        val list = savedProfiles()
+        val id = activeProfileId
+        return list.firstOrNull { it.id == id } ?: list.firstOrNull()
+    }
+
+    fun switchActiveProfile(profileId: String): SavedPcProfile? {
+        val target = savedProfiles().firstOrNull { it.id == profileId } ?: return null
+        savedToken = target.token
+        savedHost = target.host
+        savedServerId = target.serverId.ifBlank { null }
+        activeProfileId = target.id
+        return target
+    }
+
+    fun renameProfile(profileId: String, newName: String): List<SavedPcProfile> {
+        val updated = SavedPcProfileCodec.rename(savedProfiles(), profileId, newName)
+        persistProfiles(updated, activeProfileId)
+        return updated
+    }
+
+    fun removeProfile(profileId: String): List<SavedPcProfile> {
+        val updated = SavedPcProfileCodec.remove(savedProfiles(), profileId)
+        val nextActive = if (activeProfileId == profileId) updated.firstOrNull() else activeProfile()
+        persistProfiles(updated, nextActive?.id)
+        if (activeProfileId == null) {
+            savedToken = ""
+            savedHost = ""
+            savedServerId = null
+        } else if (nextActive != null && nextActive.id != profileId) {
+            savedToken = nextActive.token
+            savedHost = nextActive.host
+            savedServerId = nextActive.serverId.ifBlank { null }
+        }
+        return updated
+    }
+
+    fun updateActiveProfileMeta(
+        tunnelUrl: String? = null,
+        wakeMacs: List<String>? = null,
+        wakeBroadcasts: List<String>? = null,
+    ) {
+        val current = activeProfile() ?: return
+        val updatedProfile = current.copy(
+            tunnelUrl = tunnelUrl?.trim()?.ifEmpty { current.tunnelUrl } ?: current.tunnelUrl,
+            wakeMacs = wakeMacs?.takeIf { it.isNotEmpty() } ?: current.wakeMacs,
+            wakeBroadcasts = wakeBroadcasts?.takeIf { it.isNotEmpty() } ?: current.wakeBroadcasts,
+            lastConnectedAtMs = System.currentTimeMillis(),
+        )
+        persistProfiles(SavedPcProfileCodec.upsert(savedProfiles(), updatedProfile), current.id)
+    }
+
+    private fun persistProfiles(profiles: List<SavedPcProfile>, activeId: String?) {
+        prefs.edit()
+            .putString(KEY_PROFILES_JSON, SavedPcProfileCodec.encode(profiles))
+            .apply {
+                if (activeId.isNullOrBlank()) {
+                    remove(KEY_ACTIVE_PROFILE_ID)
+                } else {
+                    putString(KEY_ACTIVE_PROFILE_ID, activeId)
+                }
+            }
+            .apply()
+    }
+
+    private fun defaultProfileName(serverId: String?, host: String): String {
+        val cleanServer = serverId?.removePrefix("srv-")?.trim().orEmpty()
+        return cleanServer.ifEmpty { host }
+    }
+
     /** Requests a temporary 6-digit PIN displayed on the PC (POST /api/v1/pair/request). */
     fun requestPin(host: String, port: Int = 8765): RequestPinResult {
         if (EndpointUrlResolver.isRemoteTunnelHost(host)) return RequestPinResult.LanOnly
@@ -163,9 +263,25 @@ class PairingManager(context: Context) {
             return PairResult.NetworkError
         }
         val serverId = obj.optString("server_id", "").trim()
+        val cleanHost = EndpointUrlResolver.extractHostOnly(host)
         savedToken = token
-        savedHost = EndpointUrlResolver.extractHostOnly(host)
+        savedHost = cleanHost
         if (serverId.isNotEmpty()) savedServerId = serverId
+        val incoming = SavedPcProfile(
+            id = UUID.randomUUID().toString(),
+            name = defaultProfileName(serverId, cleanHost),
+            host = cleanHost,
+            port = 8787,
+            serverId = serverId,
+            token = token,
+            lastConnectedAtMs = System.currentTimeMillis(),
+        )
+        val merged = SavedPcProfileCodec.upsert(savedProfiles(), incoming)
+        val resolved = merged.firstOrNull {
+            (serverId.isNotEmpty() && it.serverId.equals(serverId, ignoreCase = true)) ||
+                it.host.equals(cleanHost, ignoreCase = true)
+        } ?: incoming
+        persistProfiles(merged, resolved.id)
         return PairResult.Paired(token, serverId)
     }
 
@@ -233,6 +349,8 @@ class PairingManager(context: Context) {
         const val KEY_TOKEN = "session_token"
         const val KEY_HOST = "paired_host"
         const val KEY_SERVER_ID = "paired_server_id"
+        private const val KEY_PROFILES_JSON = "saved_pc_profiles_v1"
+        private const val KEY_ACTIVE_PROFILE_ID = "active_pc_profile_id"
         private const val SECURE_PREFS_NAME = "nuvio_secure_prefs"
         private const val LEGACY_FALLBACK_PREFS = "nuvio_fallback_prefs"
     }

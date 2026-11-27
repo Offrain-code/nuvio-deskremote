@@ -411,3 +411,17 @@ test('CompanionServer fails closed on /api/v1/local/* when no localIpcToken is c
     fs.rmSync(tmpDir, { recursive: true, force: true });
   }
 });
+
+test('validateHttpUrl and sanitizeUploadFilename block unsafe schemes and path traversal', () => {
+  const { validateHttpUrl, sanitizeUploadFilename } = require('../dist/wsServer');
+  assert.equal(validateHttpUrl('https://nuvio.app/releases/v0.6.0'), 'https://nuvio.app/releases/v0.6.0');
+  assert.equal(validateHttpUrl('http://192.168.1.10:8080/test'), 'http://192.168.1.10:8080/test');
+  assert.equal(validateHttpUrl('file:///C:/Windows/System32/cmd.exe'), null);
+  assert.equal(validateHttpUrl('javascript:alert(1)'), null);
+  assert.equal(validateHttpUrl('https://example.com/\r\ncmd'), null);
+
+  assert.equal(sanitizeUploadFilename('../../Windows/System32/evil.exe'), 'evil.exe');
+  assert.equal(sanitizeUploadFilename('relatorio%20q4.pdf'), 'relatorio q4.pdf');
+  assert.equal(sanitizeUploadFilename('a<b>c:d|e?.txt'), 'a_b_c_d_e_.txt');
+  assert.match(sanitizeUploadFilename('...'), /^nuvio-upload-\d+\.bin$/);
+});

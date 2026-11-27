@@ -10,6 +10,9 @@ import com.nuvio.remote.ui.i18n.l10n
  */
 enum class NuvioScreenState { HOME, DETAIL, PLAYER, SEARCH, UNKNOWN }
 
+/** State of PC Mode audio-only Private Listening (DESIGN-SPEC §5.14.1). */
+enum class PrivateListeningState { IDLE, CONNECTING, ACTIVE, SILENT }
+
 /** Primary bottom-dock tabs in approved order (Nuvio Mode + PC Mode + Settings). */
 enum class NuvioTab(val labelEn: String, val labelPt: String) {
     REMOTE("Remote", "Remote"),

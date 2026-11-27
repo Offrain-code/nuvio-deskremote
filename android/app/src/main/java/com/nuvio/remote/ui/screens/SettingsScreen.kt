@@ -119,6 +119,8 @@ fun SettingsScreen(
     var qrScanTarget by remember { mutableStateOf<String?>(null) }
     var qrBridgePin by remember { mutableStateOf<String?>(null) }
     var qrPairStatus by remember { mutableStateOf<String?>(null) }
+    var savedProfiles by remember(pairing, connState) { mutableStateOf(pairing.savedProfiles()) }
+    var activeProfileId by remember(pairing, connState) { mutableStateOf(pairing.activeProfile()?.id) }
     val showOnboarding = !isPaired && savedHost.isBlank()
 
     LazyColumn(
@@ -175,6 +177,41 @@ fun SettingsScreen(
                             }
                             pairing.unpair()
                             onDisconnect()
+                        }
+                    },
+                )
+            }
+        }
+
+        if (savedProfiles.isNotEmpty()) {
+            item {
+                SavedPcsSettingsCard(
+                    profiles = savedProfiles,
+                    activeProfileId = activeProfileId,
+                    onSelectProfile = { profile ->
+                        val switched = pairing.switchActiveProfile(profile.id) ?: profile
+                        savedProfiles = pairing.savedProfiles()
+                        activeProfileId = switched.id
+                        hostInput = switched.host
+                        isPaired = pairing.isPaired()
+                        onConnect(switched.host, switched.port)
+                    },
+                    onRenameProfile = { id, nextName ->
+                        savedProfiles = pairing.renameProfile(id, nextName)
+                    },
+                    onRemoveProfile = { id ->
+                        val removingActive = id == activeProfileId
+                        savedProfiles = pairing.removeProfile(id)
+                        activeProfileId = pairing.activeProfile()?.id
+                        isPaired = pairing.isPaired()
+                        if (removingActive) {
+                            val next = pairing.activeProfile()
+                            if (next != null) {
+                                hostInput = next.host
+                                onConnect(next.host, next.port)
+                            } else {
+                                onDisconnect()
+                            }
                         }
                     },
                 )

@@ -194,6 +194,17 @@ export function windowTitle(bind: Win32Bindings, hwnd: unknown): string {
   return buf.subarray(0, len * 2).toString('utf16le');
 }
 
+/** Returns true for windows that mention "nuvio" but are NOT the Nuvio HTPC player (e.g. Companion Tauri/SIW, IDEs). */
+export function isExcludedNuvioWindowTitle(title: string): boolean {
+  const lower = title.toLowerCase();
+  return (
+    lower.includes('visual studio code') ||
+    lower.includes('nuvio-remote') ||
+    lower.includes('deskremote') ||
+    lower.includes('companion-siw')
+  );
+}
+
 /** Finds the Nuvio window: exact title match first, then case-insensitive substring fallback. */
 export function findNuvioWindow(bind: Win32Bindings, titleExact: string): unknown {
   attachToInteractiveDesktop(bind);
@@ -208,12 +219,7 @@ export function findNuvioWindow(bind: Win32Bindings, titleExact: string): unknow
     if (bind.IsWindowVisible(h)) {
       const title = windowTitle(bind, h);
       const lower = title.toLowerCase();
-      if (
-        lower.includes('nuvio') &&
-        !lower.includes('visual studio code') &&
-        !lower.includes('nuvio-remote') &&
-        !lower.includes('nuvio deskremote')
-      ) {
+      if (lower.includes('nuvio') && !isExcludedNuvioWindowTitle(title)) {
         const score = lower === lowerNeedle ? 3 : lower.includes(lowerNeedle.replace('&', '')) ? 2 : 1;
         if (!best || score > best.score) best = { h, score };
       }

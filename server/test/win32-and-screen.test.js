@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const {
   attachToInteractiveDesktop,
   ensureForeground,
+  findNuvioWindow,
+  isExcludedNuvioWindowTitle,
   INPUT_SIZE_X64,
   KEYEVENTF_KEYUP,
   KEYEVENTF_UNICODE,
@@ -165,4 +167,38 @@ test('H264AccessUnitParser places cached PPS after SPS when IDR has SPS only', (
   parser.push(Buffer.concat([sps, idr]));
   assert.equal(emitted.length, 2);
   assert.deepEqual(emitted[1].nalTypes, [7, 8, 5]);
+});
+
+test('findNuvioWindow ignores Companion single-instance window (com.nuvio.deskremote.companion-siw)', () => {
+  const windows = new Map([
+    [10n, 'com.nuvio.deskremote.companion-siw'],
+    [20n, 'Nuvio DeskRemote Companion'],
+    [30n, 'Nuvio HTPC'],
+  ]);
+  const nextMap = new Map([
+    [10n, 20n],
+    [20n, 30n],
+    [30n, 0n],
+  ]);
+  const { bind } = createMockWin32();
+  bind.GetTopWindow = () => 10n;
+  bind.GetWindow = (h) => nextMap.get(h) ?? 0n;
+  bind.GetWindowTextW = (h, buf) => {
+    const t = windows.get(h) || '';
+    const raw = Buffer.from(t, 'utf16le');
+    raw.copy(buf, 0);
+    return t.length;
+  };
+
+  assert.equal(isExcludedNuvioWindowTitle('com.nuvio.deskremote.companion-siw'), true);
+  assert.equal(isExcludedNuvioWindowTitle('Nuvio DeskRemote Companion'), true);
+  assert.equal(isExcludedNuvioWindowTitle('Nuvio HTPC'), false);
+
+  // When Nuvio HTPC is present alongside Companion windows, it must pick Nuvio HTPC (30n)
+  assert.equal(findNuvioWindow(bind, 'Nuvio HTPC'), 30n);
+
+  // When Nuvio HTPC is not open yet, it must return null (never cache Companion's SIW window)
+  windows.delete(30n);
+  nextMap.set(20n, 0n);
+  assert.equal(findNuvioWindow(bind, 'Nuvio HTPC'), null);
 });

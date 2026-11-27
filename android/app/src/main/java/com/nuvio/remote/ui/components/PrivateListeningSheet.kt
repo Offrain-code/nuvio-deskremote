@@ -68,146 +68,154 @@ fun PrivateListeningSheetDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Column(
+        SwipeToDismissSheetContainer(
+            onDismiss = onDismiss,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
                 .nuvioGlass(shape = RoundedCornerShape(24.dp), variant = GlassVariant.REGULAR, elevated = true)
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            PrivateListeningHeader(onDismiss = onDismiss)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                PrivateListeningHeader(onDismiss = onDismiss)
 
-            PrivateListeningStatusRow(state = state, pcName = pcName, pingMs = pingMs)
+                PrivateListeningStatusRow(state = state, pcName = pcName, pingMs = pingMs)
 
-            // 100% opaque content card (zero glass inside)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(scheme.contentCardSurface)
-                    .border(1.dp, scheme.contentBorder, RoundedCornerShape(16.dp))
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                // 100% opaque content card (zero glass inside)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(scheme.contentCardSurface)
+                        .border(1.dp, scheme.contentBorder, RoundedCornerShape(16.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Box(
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(11.dp))
+                                .background(scheme.contentCellSurface)
+                                .border(1.dp, scheme.statusOnline.copy(alpha = 0.4f), RoundedCornerShape(11.dp)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            NuvioIcon(
+                                imageVector = Icons.Rounded.Headphones,
+                                contentDescription = null,
+                                tint = scheme.statusOnline,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            NuvioText(
+                                text = l10n(
+                                    "Headphones / Speaker • 24 kHz Stereo",
+                                    "Fone / Alto-falante • 24 kHz Estéreo",
+                                ),
+                                style = NuvioTypography.KeyLabelPrimary.copy(fontWeight = FontWeight.Bold),
+                                color = scheme.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            NuvioText(
+                                text = l10n(
+                                    "PC audio only • Video capture off",
+                                    "Somente áudio do PC • Vídeo desligado",
+                                ),
+                                style = NuvioTypography.KeyLabelCompact,
+                                color = scheme.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        StaticAudioBars(active = state == PrivateListeningState.ACTIVE)
+                    }
+
+                    Row(
                         modifier = Modifier
-                            .size(38.dp)
+                            .fillMaxWidth()
                             .clip(RoundedCornerShape(11.dp))
                             .background(scheme.contentCellSurface)
-                            .border(1.dp, scheme.statusOnline.copy(alpha = 0.4f), RoundedCornerShape(11.dp)),
-                        contentAlignment = Alignment.Center,
+                            .border(1.dp, scheme.contentBorder, RoundedCornerShape(11.dp))
+                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         NuvioIcon(
-                            imageVector = Icons.Rounded.Headphones,
+                            imageVector = Icons.Rounded.Lock,
                             contentDescription = null,
-                            tint = scheme.statusOnline,
-                            modifier = Modifier.size(20.dp),
+                            tint = scheme.textSecondary,
+                            modifier = Modifier.size(14.dp),
                         )
-                    }
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                         NuvioText(
-                            text = l10n("Headphones / Speaker • 24 kHz Stereo", "Fone / Alto-falante • 24 kHz Estéreo"),
-                            style = NuvioTypography.KeyLabelPrimary.copy(fontWeight = FontWeight.Bold),
+                            text = l10n("Keeps playing with screen off", "Continua tocando com a tela apagada"),
+                            style = NuvioTypography.KeyLabelCompact.copy(fontWeight = FontWeight.Medium),
                             color = scheme.textPrimary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
-                        NuvioText(
-                            text = l10n("PC audio only • Video capture off", "Somente áudio do PC • Vídeo desligado"),
-                            style = NuvioTypography.KeyLabelCompact,
-                            color = scheme.textSecondary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        PrivateAudioControlChip(
+                            label = l10n("Mute PC", "Mudo PC"),
+                            icon = Icons.AutoMirrored.Rounded.VolumeOff,
+                            onClick = {
+                                if (hapticsEnabled) Haptics.action(context)
+                                onMutePc()
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        PrivateAudioControlChip(
+                            label = "Vol −",
+                            icon = Icons.Rounded.Remove,
+                            onClick = {
+                                if (hapticsEnabled) Haptics.action(context)
+                                onVolumeDown()
+                            },
+                            modifier = Modifier.weight(1f),
+                        )
+                        PrivateAudioControlChip(
+                            label = "Vol +",
+                            icon = Icons.Rounded.Add,
+                            onClick = {
+                                if (hapticsEnabled) Haptics.action(context)
+                                onVolumeUp()
+                            },
+                            modifier = Modifier.weight(1f),
                         )
                     }
-                    StaticAudioBars(active = state == PrivateListeningState.ACTIVE)
                 }
 
-                Row(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(scheme.contentCellSurface)
-                        .border(1.dp, scheme.contentBorder, RoundedCornerShape(11.dp))
-                        .padding(horizontal = 10.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        .defaultMinSize(minHeight = 48.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(scheme.statusError.copy(alpha = 0.16f))
+                        .border(1.dp, scheme.statusError.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
+                        .clickable {
+                            if (hapticsEnabled) Haptics.action(context)
+                            onStop()
+                        }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
                 ) {
-                    NuvioIcon(
-                        imageVector = Icons.Rounded.Lock,
-                        contentDescription = null,
-                        tint = scheme.textSecondary,
-                        modifier = Modifier.size(14.dp),
-                    )
                     NuvioText(
-                        text = l10n("Keeps playing with screen off", "Continua tocando com a tela apagada"),
-                        style = NuvioTypography.KeyLabelCompact.copy(fontWeight = FontWeight.Medium),
-                        color = scheme.textPrimary,
+                        text = l10n("Stop Private Listening", "Encerrar Escuta Privada"),
+                        style = NuvioTypography.KeyLabelPrimary.copy(fontWeight = FontWeight.Bold),
+                        color = scheme.statusError,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    PrivateAudioControlChip(
-                        label = l10n("Mute PC", "Mudo PC"),
-                        icon = Icons.AutoMirrored.Rounded.VolumeOff,
-                        onClick = {
-                            if (hapticsEnabled) Haptics.action(context)
-                            onMutePc()
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    PrivateAudioControlChip(
-                        label = "Vol −",
-                        icon = Icons.Rounded.Remove,
-                        onClick = {
-                            if (hapticsEnabled) Haptics.action(context)
-                            onVolumeDown()
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                    PrivateAudioControlChip(
-                        label = "Vol +",
-                        icon = Icons.Rounded.Add,
-                        onClick = {
-                            if (hapticsEnabled) Haptics.action(context)
-                            onVolumeUp()
-                        },
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .defaultMinSize(minHeight = 48.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(scheme.statusError.copy(alpha = 0.16f))
-                    .border(1.dp, scheme.statusError.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
-                    .clickable {
-                        if (hapticsEnabled) Haptics.action(context)
-                        onStop()
-                    }
-                    .padding(horizontal = 14.dp, vertical = 12.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                NuvioText(
-                    text = l10n("Stop Private Listening", "Encerrar Escuta Privada"),
-                    style = NuvioTypography.KeyLabelPrimary.copy(fontWeight = FontWeight.Bold),
-                    color = scheme.statusError,
-                    maxLines = 1,
-                )
             }
         }
     }

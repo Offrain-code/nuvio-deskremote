@@ -75,69 +75,71 @@ fun MultiPcSheetDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
     ) {
-        Column(
+        SwipeToDismissSheetContainer(
+            onDismiss = onDismiss,
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 16.dp)
                 .nuvioGlass(shape = RoundedCornerShape(24.dp), variant = GlassVariant.REGULAR, elevated = true)
                 .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            MultiPcSheetHeader(onDismiss = onDismiss)
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                MultiPcSheetHeader(onDismiss = onDismiss)
 
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 320.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                profiles.forEach { profile ->
-                    val isActive = profile.id == activeProfileId
-                    val isOnline = isActive && connState is ConnState.Connected
-                    MultiPcProfileRow(
-                        profile = profile,
-                        isActive = isActive,
-                        isOnline = isOnline,
-                        pingMs = pingMs,
-                        onSelect = {
-                            if (hapticsEnabled) Haptics.action(context)
-                            onSelectProfile(profile)
-                        },
-                        onWake = {
-                            if (hapticsEnabled) Haptics.action(context)
-                            val info = NuvioWakeInfo(profile.wakeMacs, profile.wakeBroadcasts)
-                            scope.launch {
-                                val sent = NuvioWakeOnLan.sendWake(info)
-                                wakeFeedback = if (sent) {
-                                    "WoL -> ${profile.name}"
-                                } else {
-                                    "WoL"
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    profiles.forEach { profile ->
+                        val isActive = profile.id == activeProfileId
+                        val isOnline = isActive && connState is ConnState.Connected
+                        MultiPcProfileRow(
+                            profile = profile,
+                            isActive = isActive,
+                            isOnline = isOnline,
+                            pingMs = pingMs,
+                            onSelect = {
+                                if (hapticsEnabled) Haptics.action(context)
+                                onSelectProfile(profile)
+                            },
+                            onWake = {
+                                if (hapticsEnabled) Haptics.action(context)
+                                val info = NuvioWakeInfo(profile.wakeMacs, profile.wakeBroadcasts)
+                                scope.launch {
+                                    val sent = NuvioWakeOnLan.sendWake(info)
+                                    wakeFeedback = if (sent) {
+                                        "WoL -> ${profile.name}"
+                                    } else {
+                                        "WoL"
+                                    }
                                 }
-                            }
-                        },
+                            },
+                        )
+                    }
+                }
+
+                wakeFeedback?.let { msg ->
+                    NuvioText(
+                        text = l10n("Wake signal sent: $msg", "Sinal de despertar enviado: $msg"),
+                        style = NuvioTypography.KeyLabelCompact,
+                        color = scheme.statusOnline,
                     )
                 }
-            }
 
-            wakeFeedback?.let { msg ->
-                NuvioText(
-                    text = l10n("Wake signal sent: $msg", "Sinal de despertar enviado: $msg"),
-                    style = NuvioTypography.KeyLabelCompact,
-                    color = scheme.statusOnline,
+                MultiPcSheetFooter(
+                    onAddPc = {
+                        if (hapticsEnabled) Haptics.action(context)
+                        onAddPc()
+                    },
+                    onManageProfiles = {
+                        if (hapticsEnabled) Haptics.tab(context)
+                        onManageProfiles()
+                    },
                 )
             }
-
-            MultiPcSheetFooter(
-                onAddPc = {
-                    if (hapticsEnabled) Haptics.action(context)
-                    onAddPc()
-                },
-                onManageProfiles = {
-                    if (hapticsEnabled) Haptics.tab(context)
-                    onManageProfiles()
-                },
-            )
         }
     }
 }

@@ -143,8 +143,13 @@ class NuvioBridgeStateHolder(
         put("number", number)
     }
 
-    fun requestSources(force: Boolean = false): Boolean = sendJson("nuvio_sources_open") {
-        put("force", force)
+    fun requestSources(force: Boolean = false): Boolean {
+        if (force && _sources.value == null) {
+            _sources.value = NuvioSourceList(title = "", loading = true, sources = emptyList())
+        }
+        return sendJson("nuvio_sources_open") {
+            put("force", force)
+        }
     }
 
     fun pickSource(number: Int): Boolean = sendJson("nuvio_pick_source") {

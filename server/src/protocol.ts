@@ -313,6 +313,24 @@ export interface NuvioTonightScreen {
   selected: number;
 }
 
+export interface AudioOutputDevice {
+  id: string;
+  name: string;
+  isDefault: boolean;
+}
+
+export interface AudioAppSession {
+  pid: number;
+  name: string;
+  volume: number;
+  muted: boolean;
+}
+
+export interface AudioMixerState {
+  outputs: AudioOutputDevice[];
+  sessions: AudioAppSession[];
+}
+
 export type ClientMessage =
   | { type: 'hello'; name?: string; auth?: string }
   | { type: 'AUTH'; device_id?: string; token: string }
@@ -329,6 +347,9 @@ export type ClientMessage =
   | { type: 'private_audio_start' }
   | { type: 'private_audio_stop' }
   | { type: 'pc_open_url'; url: string }
+  | { type: 'audio_mixer_get' }
+  | { type: 'audio_mixer_set_app'; pid: number; volume?: number; muted?: boolean }
+  | { type: 'audio_mixer_set_output'; deviceId: string }
   | { type: 'screen_webrtc_state'; live: boolean }
   | { type: 'webrtc_candidate'; candidate: string; mid?: string }
   | { type: 'window'; action: WindowAction }
@@ -375,6 +396,7 @@ export type ServerMessage =
   | { type: 'screen_status'; status: 'starting' | 'running' | 'stopped'; profile?: ScreenProfile; monitor?: number; detail?: string }
   | { type: 'private_audio_status'; active: boolean; detail?: string }
   | { type: 'pc_open_url_result'; ok: boolean; error?: string }
+  | { type: 'audio_mixer_state'; outputs: AudioOutputDevice[]; sessions: AudioAppSession[] }
   | { type: 'screen_frame'; data: string; width: number; height: number; monitor?: number; ts: number }
   | { type: 'webrtc_answer'; sdp: string }
   | { type: 'log_event'; tag: string; line: string; ts: string }

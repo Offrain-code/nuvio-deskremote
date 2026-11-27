@@ -640,6 +640,9 @@ private fun PlayerSpeedTimerSheetBody(
     onKey: (String) -> Unit,
 ) {
     val scheme = LocalNuvioColors.current
+    val context = LocalContext.current
+    val prefs = remember(context) { com.nuvio.remote.data.AppPrefs(context) }
+    var fadeOutEnabled by remember { mutableStateOf(prefs.sleepFadeOutEnabled) }
     val speeds = listOf(
         l10n("0.75x", "0,75x") to 75,
         l10n("1.0x", "1,0x") to 100,
@@ -700,6 +703,37 @@ private fun PlayerSpeedTimerSheetBody(
             ),
             style = NuvioTypography.KeyShortcutBadge,
             color = accentForScreen(NuvioScreenState.PLAYER).primary,
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(14.dp))
+            .background(scheme.contentCellSurface)
+            .border(1.dp, scheme.contentBorder, RoundedCornerShape(14.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            NuvioText(
+                text = l10n("Gradual volume fade-out (60s)", "Reduzir volume gradualmente (60s)"),
+                style = NuvioTypography.KeyLabelCompact,
+                color = scheme.textPrimary,
+            )
+            NuvioText(
+                text = l10n("Smooth fade during final minute", "Fade-out suave no último minuto"),
+                style = NuvioTypography.KeyShortcutBadge,
+                color = scheme.textSecondary,
+            )
+        }
+        com.nuvio.remote.ui.components.NuvioGlassSwitch(
+            checked = fadeOutEnabled,
+            onCheckedChange = { next ->
+                fadeOutEnabled = next
+                prefs.sleepFadeOutEnabled = next
+            },
         )
     }
 

@@ -939,16 +939,16 @@ Esta seção especifica os 3 recursos da **Fase 3 — Diferenciais de Ecossistem
       1. **`PC Sala` (Ativo / Conectado):**
          - Borda `1.5.dp statusOnline` (`#34D399` escuro / `#047857` claro).
          - Linha 1: **`PC Sala`** + badge **`● Ativo • 2 ms • Wi-Fi`**.
-         - Linha 2: `192.168.1.42:8787 • Ponte Nuvio Sincronizada`.
+         - Linha 2: `192.0.2.10:8787 • Ponte Nuvio Sincronizada`.
       2. **`PC Escritório` (Disponível na Rede Wi-Fi — Troca em 1 Toque):**
          - Superfície `ContentCellSurface`, borda `1.dp ContentBorder`.
          - Linha 1: **`PC Escritório`** + badge **`● Disponível • Wi-Fi`**.
-         - Linha 2: `192.168.1.88:8787 • Tocar para alternar`.
+         - Linha 2: `192.0.2.20:8787 • Tocar para alternar`.
          - Botão à direita: **`Conectar / Switch`** (`minWidth = 76.dp, height = 48.dp`, cápsula visual `34.dp`).
       3. **`HTPC Quarto` (Offline / Suspenso — Com Botão `Acordar (WoL)`):**
          - Superfície `ContentCellSurface`, borda `1.dp statusWarning.copy(alpha = 0.40f)`.
          - Linha 1: **`HTPC Quarto`** + badge âmbar **`● Offline`** (`statusWarning`).
-         - Linha 2: `192.0.2.105 • MAC salvo para Wake-on-LAN`.
+         - Linha 2: `192.0.2.30 • MAC salvo para Wake-on-LAN`.
          - Botão à direita: **`⚡ Acordar (WoL)`** (`minWidth = 104.dp, height = 48.dp`, cápsula visual `34.dp` primária/destaque que dispara o Magic Packet UDP imediatamente).
   - **Rodapé da Folha (`Row` de `height = 48.dp`, `spacedBy(8.dp)`):**
     - Botão **`+ Adicionar PC / + Add PC`** (`weight(1.25f)`, `height = 48.dp`, cápsula visual `38.dp` em `pillActiveBgTop -> pillActiveBgBottom`, texto `pillActiveFg` — navega para `Ajustes` abrindo o pareamento QR/PIN).
@@ -962,6 +962,100 @@ Esta seção especifica os 3 recursos da **Fase 3 — Diferenciais de Ecossistem
         - **`Remover / Remove`** (com **confirmação obrigatória em 2º toque**: o 1º toque altera o botão/linha para **`Confirmar remoção?`** em `statusError` `#F87171` escuro / `#B91C1C` claro + botão **`Cancelar`**, impedindo exclusão acidental do pareamento SHA-256).
     - **Barra Inferior de Novo Pareamento (`Row` de `height = 48.dp`, `spacedBy(6.dp)`):**
       - Mantém os 3 botões canônicos com `defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`: **`Buscar Wi-Fi`**, **`Escanear QR`** e **`Código PIN`** (`+ Adicionar PC`).
+
+---
+
+### 5.15 Fase 4 (`v0.7.0`) — Mixer de Áudio do Windows, Pausa em Ligação + Sleep Timer Fade-Out, Zoom Seguindo o Cursor e Polimento Liquid Glass 60fps
+
+Esta seção especifica os 4 blocos visuais e de interação da **Fase 4 (`v0.7.0`)** do Nuvio DeskRemote, mantendo separação estrita entre **Modo Nuvio** (`Remote`, `Apps`) e **Modo PC** (`Trackpad`, `Tela`), zero Material 3 (`md.sys`), vidro restrito à camada funcional flutuante e superfícies internas 100% opacas (`ContentCardSurface` / `ContentCellSurface`).
+
+---
+
+#### 5.15.1 Fase 4A — Mixer de Áudio do Windows + Troca de Saída (`PcAudioMixerSheet` — Modo PC Exclusivo)
+
+- **Escopo Estrito (Modo PC Exclusivo):**
+  - Acessível **exclusivamente no Modo PC**:
+    1. **Aba `Trackpad` (`TrackpadScreen.kt`):** botão/chip **`Mixer`** (`defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`, cápsula visual `38–44.dp` em `ContentCellSurface`) na barra de ações rápidas do PC ou no cabeçalho do Trackpad.
+    2. **Aba `Tela` (`ScreenSharePortrait.kt` / `ScreenShareScreen.kt`):** botão **`Mixer PC` / `Audio Mixer`** (`minWidth = 48.dp, minHeight = 48.dp`) no card `PortraitStatusControlCard` em modo retrato e item **`Mixer`** (`>= 48.dp × 48.dp`) na grade do menu flutuante `Mais PC` em modo paisagem/tela cheia.
+  - **Proibido** exibir gatilhos ou atalhos do Mixer do Windows nas abas `Remote` e `Apps` (Modo Nuvio).
+- **Folha Flutuante `Mixer de Áudio` (`PcAudioMixerSheet` — `GlassVariant.REGULAR` + Conteúdo Interno 100% Opaco):**
+  - **Scrim de Fundo:** `rgba(5, 7, 11, 0.56)` no escuro / `rgba(15, 23, 42, 0.40)` no claro.
+  - **Container Externo (`PcAudioMixerModalGlass`):** única camada com **`GlassVariant.REGULAR` (`elevated = true`)**, `RoundedCornerShape(24.dp)`, `padding = 8.dp 12.dp 12.dp`.
+  - **Alça Superior de Arraste (*Drag Handle* `36.dp × 4.dp`):**
+    - Centralizada no topo da folha (`width = 36.dp, height = 4.dp`, `CircleShape`, cor `glassBorder` / `textMuted.copy(alpha = 0.48f)`), indicando fechamento por arraste vertical `1:1` (*swipe-to-dismiss*).
+  - **Cabeçalho (`height = 48.dp`):**
+    - Kicker: `MODO PC • ÁUDIO DO WINDOWS (WASAPI MIXER)`.
+    - Título: **`Mixer de Áudio • Audio Mixer`** (`13.5.sp` ExtraBold, `TextPrimary`).
+    - Botão `Fechar` à direita (`48.dp × 48.dp`, cápsula visual circular `34.dp` em `ContentCellSurface`).
+  - **1. Seletor de Saída de Áudio do PC (`ContentCardSurface` 100% Opaco — Zero Vidro):**
+    - Card opaco (`#13161E` no escuro / `#FFFFFF` no claro, `RoundedCornerShape(16.dp)`, `padding = 8.dp 10.dp`, `border = 1.dp ContentBorder`) com título `SAÍDA DE ÁUDIO • OUTPUT DEVICE` e badge **`● Ativo`** (`statusOnline`).
+    - Grade horizontal de `3` chips opacos (`height = 48.dp`, `spacedBy(5.dp)`), cada um com **hitbox `>= 48.dp × 48.dp`** (cápsula visual interna de `34.dp`, `RoundedCornerShape(11.dp)`):
+      - **`TV HDMI` (`● Ativo`):** borda `1.5.dp statusOnline` (`#34D399` escuro / `#047857` claro) ou fundo `pillActiveBgTop -> pillActiveBgBottom` (`pillActiveFg`).
+      - **`Fone BT` (`Headphones`):** superfície opaca `ContentCellSurface`, texto `TextPrimary`.
+      - **`Caixas PC` (`Speakers`):** superfície opaca `ContentCellSurface`, texto `TextPrimary`.
+  - **2. Lista de Aplicativos com Volume e Mudo Individual (`ContentCellSurface` 100% Opaco — Zero Vidro):**
+    - Lista vertical de sessões de áudio ativas no Windows (`Nuvio HTPC`, `Google Chrome`, `Discord`, `Spotify`), onde cada linha é uma célula **100% opaca `ContentCellSurface`** (`#191D28` escuro / `#F3F6FB` claro, `RoundedCornerShape(14.dp)`, `padding = 4.dp 8.dp`, `minHeight = 52.dp`):
+
+| Elemento da Linha do App | Geometria e Hitbox (`>= 48.dp`) | Tokens Visuais e Estados (Escuro / Claro) |
+| :--- | :--- | :--- |
+| **Botão de Mudo Individual (`AppMuteButton`)** | `width = 48.dp, height = 48.dp` (cápsula visual `34.dp × 34.dp`, `RoundedCornerShape(10.dp)`) | • **Ativo (Com som):** fundo `ContentCardSurface`, ícone `volumeOn` (`15.dp`, `TextPrimary`).<br>• **Silenciado (`Muted`):** fundo `statusWarning.copy(alpha = 0.16f)`, borda `1.dp statusWarning`, ícone `mute` em `statusWarning` (`#FBBF24` escuro / `#B45309` claro). |
+| **Cabeçalho do App + Porcentagem** | Linha superior dentro da coluna `weight(1f)` | • Nome do processo (`Nuvio HTPC`, `Google Chrome`, `Discord`, `Spotify`) em `10.8.sp` Bold `TextPrimary`.<br>• Valor tabular (`100%`, `78%`, `45%`, `Mudo • 0%`) em `10.sp` ExtraBold (`ctxPlayer` ou `statusWarning` quando mudo). |
+| **Slider Suave + Ajuste Fino (`AppVolumeSlider`)** | Área de toque `height = 48.dp` (ou botões `−` / `+` de `48.dp × 48.dp` + trilha linear opaca de `6.dp`) | • Trilha de fundo: `ContentCardSurface` (`RoundedCornerShape(999.dp)`).<br>• Preenchimento: `ctxPlayer` (`#C4B5FD` escuro / `#6D28D9` claro) ou `statusOnline`.<br>• *Thumb* circular opaco: `14.dp` em `TextPrimary` com borda `2.dp ContentCardSurface`. |
+
+---
+
+#### 5.15.2 Fase 4B — Pausa Automática em Ligação + Sleep Timer com Fade-Out (Modo Nuvio & `Ajustes`)
+
+1. **Card em `Ajustes` (`SettingsScreen.kt` — 100% Opaco `ContentCardSurface`):**
+   - Dentro do card opaco de preferências (ou card dedicado **`CHAMADAS E AUTOMAÇÃO DO PLAYER`**):
+     - **Linha 1 — Toggle Principal (`minHeight = 48.dp`, `ContentCellSurface`, `RoundedCornerShape(14.dp)`):**
+       - Título: **`Pausar Nuvio em chamadas telefônicas`** (`EN: Pause Nuvio on incoming/active phone calls`).
+       - Estado inicial: **desligado por padrão (`false`)**.
+       - Controle à direita: `NuvioGlassSwitch` dentro de alvo de toque `>= 48.dp × 48.dp`.
+     - **Nota Explicativa de Permissão sob Demanda (`ContentCellSurface`, `padding = 6.dp 10.dp`):**
+       - Texto claro e sem jargão: **`Desligado por padrão. A permissão de estado de chamada só é solicitada se você ativar esta opção.`** (`EN: Off by default. Phone state permission is only requested when enabled.`).
+     - **Linha 2 — Sub-opção Condicional (`minHeight = 48.dp`, `ContentCellSurface`):**
+       - Título: **`Retomar ao encerrar chamada`** (`EN: Resume playback when call ends`).
+       - Subtítulo: **`Retoma automaticamente apenas se o Nuvio foi pausado pela ligação`**.
+2. **Folha `Velocidade & Timer` do Player (`PlayerSheets.kt` — `GlassVariant.REGULAR` + Células Opacas):**
+   - Container externo em `GlassVariant.REGULAR` (`elevated = true`) com **alça de arraste superior (`36.dp × 4.dp`)**.
+   - Na seção **`TIMER PARA DORMIR (SLEEP TIMER)`**:
+     - Grade de opções com hitboxes `>= 48.dp × 48.dp`: **`15m`**, **`30m`**, **`45m`**, **`60m`** e **`Fim do episódio / End of episode`**.
+     - **Novo Toggle Compacto 100% Opaco de Fade-Out (`ContentCellSurface`, `minHeight = 48.dp`, `RoundedCornerShape(13.dp)`, `paddingHorizontal = 10.dp`):**
+       - Título: **`Reduzir volume gradualmente (60s)`** (`EN: Fade out volume over final 60s`).
+       - Subtítulo: **`Suaviza o áudio do Nuvio no último minuto antes de pausar`**.
+       - Controle à direita: `NuvioGlassSwitch` (`>= 48.dp × 48.dp`, ativo).
+
+---
+
+#### 5.15.3 Fase 4C — Zoom com Seguimento do Ponteiro no Screen Share (Modo PC — Aba `Tela`)
+
+- **Condição de Exibição:** visível exclusivamente na aba **`Tela`** (Modo PC — retrato e tela cheia paisagem) quando `zoom > 1.01f` (ex.: `1.8x`).
+- **Camada Liquid Glass sobre Vídeo (`GlassVariant.CLEAR` com Scrim `+35%` em Fundo Claro):**
+  - No canto superior esquerdo do `VideoStreamViewport` (`Alignment.TopStart`, `padding(top = 6.dp, start = 8.dp)`), o antigo `ZoomResetPill` isolado evolui para um `Row` compacto (`horizontalArrangement = Arrangement.spacedBy(6.dp)`) com **2 pílulas `GlassVariant.CLEAR`** (`isBackdropLight = isBackdropLight`, `captureStageBackdrop = false`, `resting = false`):
+    1. **Pílula `1.8x • Resetar` (`ZoomResetPill`):**
+       - Hitbox externo `defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`.
+       - Cápsula visual `height = 32.dp`, `CircleShape`, `paddingHorizontal = 11.dp`, texto **`1.8x • Resetar`** (`EN: 1.8x • Reset`) em `clearOverlayText` (`#FFFFFF`) com `ClearContentShadow` (**contraste `>= 5.6:1` WCAG AA** sobre tela clara ou escura).
+    2. **Pílula Toggle `Seguir cursor` (`ZoomFollowCursorPill`):**
+       - Hitbox externo `defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)`.
+       - Cápsula visual `height = 32.dp`, `CircleShape`, `paddingHorizontal = 11.dp`, ícone de mira/cursor (`focus`, `14.dp`) + texto **`Seguir cursor`** (`EN: Follow cursor`) + LED/badge **`● ON`** (`statusOnline` `#34D399`).
+       - **Estado Padrão:** **ativado automaticamente (`true`)** ao entrar em `zoom > 1.01f`. Quando ativo, recebe borda especular destacada (`rgba(52, 211, 153, 0.65)`); um toque alterna entre `Seguir cursor: ON` (câmera acompanha o ponteiro automaticamente) e `Seguir cursor: OFF` (pan 100% manual).
+
+---
+
+#### 5.15.4 Fase 4D — Polimento Liquid Glass 60fps (Folhas Arrastáveis `1:1`, Pílula Superior e `Swipe Pad`)
+
+1. **Alça Superior Padronizada (*Drag Handle* `36.dp × 4.dp`) nas Folhas `GlassVariant.REGULAR`:**
+   - Todas as folhas flutuantes modais possuem no topo um indicador em pílula `width = 36.dp, height = 4.dp`, `CircleShape`, cor `rgba(255, 255, 255, 0.34)` no Tema Escuro e `rgba(15, 23, 42, 0.24)` no Tema Claro.
+   - O gesto de arraste vertical acompanha o dedo `1:1` via `graphicsLayer { translationY = offsetPx }` a `60fps` na GPU (sem relayout por frame).
+2. **Estados da Pílula Superior de Conexão (`NuvioGlassTopBar`):**
+   - **`Buscando` (`Searching`):** LED âmbar `statusWarning` + rótulo `Buscando PC…` (`Searching…`).
+   - **`Conectando` (`Connecting`):** LED âmbar `statusWarning` + rótulo `Conectando • PC Sala…`.
+   - **`Conectado` (`Connected`):** LED verde `statusOnline` + rótulo **`PC Sala • 2 ms ▾`**.
+   - Transição entre estados usa `scale 0.98 -> 1.0` + `fade` (`280ms`, `spring`), desativada automaticamente quando `LocalReducedMotion.current == true`.
+3. **Feedback Visual do `PrecisionSwipePad` (Ponto Especular seguindo o Vetor do Polegar):**
+   - Quando o usuário desliza o polegar sobre o `PrecisionSwipePad`, um **halo especular sutil** (`32.dp` de diâmetro, gradiente radial translúcido) acompanha a ponta do dedo ao longo do vetor `(dx, dy)` e ilumina o chevron da direção reconhecida (`↑`, `↓`, `←`, `→`).
+   - **Com Redução de Movimento Ativa (`LocalReducedMotion.current == true`):** o ponto especular móvel fica estático no centro com anel de confirmação discreto e destaque direto no chevron cardinal acionado.
 
 ---
 
@@ -988,6 +1082,12 @@ Esta seção especifica os 3 recursos da **Fase 3 — Diferenciais de Ecossistem
    - Simulador de **API Android (`API 33+`, `API 31–32`, `API < 31`)**;
    - Alternador de **Redução de Movimento** (`?rm=1` e `@media (prefers-reduced-motion: reduce)`).
 3. **PNGs renderizados diretamente do mockup atualizado (`ui/mockups/`):**
+   - **Fase 4 (`v0.7.0`) — Mixer de Áudio do Windows + Troca de Saída, Pausa Automática em Ligação + Sleep Timer com Fade-Out, Zoom com Seguimento do Ponteiro e Polimento Liquid Glass 60fps:**
+     - `mockups/mockup-v070-overview.png` (Painel geral comparativo das 3 telas da Fase 4 `v0.7.0` em **Tema Escuro**: Mixer de Áudio do Windows no Modo PC, Pausa em Ligação + Sleep Timer Fade-Out + Polimento 60fps, e Zoom `1.8x` com `Seguir cursor` na aba `Tela`)
+     - `mockups/mockup-v070-light.png` (Painel geral comparativo da Fase 4 `v0.7.0` em **Tema Claro**, validando contraste WCAG AA/AAA nas folhas `GlassVariant.REGULAR`, pílulas `GlassVariant.CLEAR` com `+35%` scrim e cards/listas 100% opacos)
+     - `mockups/mockup-v070-audio-mixer.png` e `mockups/mockup-v070-audio-mixer-light.png` (Fase 4A em Tema Escuro e Tema Claro: Gatilho `Mixer` `>= 48dp` no Modo PC + Folha Flutuante `Mixer de Áudio` em `GlassVariant.REGULAR` com alça de arraste `36×4dp`, seletor opaco de saída `TV HDMI (Ativo) | Fone Bluetooth | Alto-falantes` e lista 100% opaca de aplicativos — `Nuvio HTPC`, `Google Chrome`, `Discord`, `Spotify` — com porcentagem, mudo individual `>= 48dp` e slider suave)
+     - `mockups/mockup-v070-call-sleep.png` e `mockups/mockup-v070-call-sleep-light.png` (Fase 4B + 4D em Tema Escuro e Tema Claro: Card opaco em `Ajustes` com toggle `Pausar Nuvio em chamadas telefônicas` desligado por padrão + `Retomar ao encerrar chamada`, Folha `Velocidade & Timer` em `GlassVariant.REGULAR` com alça `36×4dp` e toggle opaco `Reduzir volume gradualmente (60s)` junto aos chips de Sleep Timer `15m..Fim do ep.`, e referência dos estados da pílula superior `Buscando / Conectando / Conectado` + `Swipe Pad` com ponto especular)
+     - `mockups/mockup-v070-zoom-follow.png` e `mockups/mockup-v070-zoom-follow-light.png` (Fase 4C + 4D em Tema Escuro e Tema Claro: Aba `Tela` com `zoom = 1.8x` exibindo lado a lado as pílulas `GlassVariant.CLEAR` **`1.8x • Resetar`** e **`Seguir cursor • ON`** `>= 48dp` sobre o vídeo do PC + Feedback visual do `Swipe Pad` com ponto especular vetorial e estados da pílula superior)
    - **Fase 3 — Diferenciais de Ecossistema (Pós-v0.5.5 / v0.6.0 — Escuta Privada, Share Sheet `"Enviar para o PC"` e Multi-PC):**
      - `mockups/mockup-v060-overview.png` (Painel geral comparativo dos 3 recursos da Fase 3 em **Tema Escuro**: Escuta Privada no Modo PC, Share Sheet Expandido `"Enviar para o PC"` e Multi-PC com Folha `"Computadores"` + Card em `Ajustes`)
      - `mockups/mockup-v060-light.png` (Painel geral comparativo dos 3 recursos da Fase 3 em **Tema Claro**, validando contraste WCAG AA/AAA em todas as superfícies opacas e camadas Liquid Glass `REGULAR`)

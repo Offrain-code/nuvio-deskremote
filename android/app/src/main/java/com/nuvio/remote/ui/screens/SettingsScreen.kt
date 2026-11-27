@@ -121,6 +121,10 @@ fun SettingsScreen(
     var qrPairStatus by remember { mutableStateOf<String?>(null) }
     var savedProfiles by remember(pairing, connState) { mutableStateOf(pairing.savedProfiles()) }
     var activeProfileId by remember(pairing, connState) { mutableStateOf(pairing.activeProfile()?.id) }
+    val ctx = LocalContext.current
+    val settingsPrefs = remember(ctx) { com.nuvio.remote.data.AppPrefs(ctx) }
+    var pauseOnCall by remember { mutableStateOf(settingsPrefs.pauseOnCall) }
+    var resumeAfterCall by remember { mutableStateOf(settingsPrefs.resumeAfterCall) }
     val showOnboarding = !isPaired && savedHost.isBlank()
 
     LazyColumn(
@@ -231,6 +235,21 @@ fun SettingsScreen(
             RemoteAccessCard(
                 tunnelUrl = tunnelUrl,
                 onConnectRemote = { url -> onConnect(url, 443) },
+            )
+        }
+
+        item {
+            CallAutoPauseSettingsCard(
+                pauseOnCall = pauseOnCall,
+                resumeAfterCall = resumeAfterCall,
+                onPauseOnCallChange = { enabled ->
+                    pauseOnCall = enabled
+                    settingsPrefs.pauseOnCall = enabled
+                },
+                onResumeAfterCallChange = { enabled ->
+                    resumeAfterCall = enabled
+                    settingsPrefs.resumeAfterCall = enabled
+                },
             )
         }
 

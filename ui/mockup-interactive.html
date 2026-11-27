@@ -2982,6 +2982,9 @@
     </div>
 
     <div class="scenario-strip" id="scenarioStrip">
+      <button class="scen-btn" data-scen="v070-audio-mixer" onclick="goScenario('v070-audio-mixer')">v0.7.0 F4A • Mixer de Áudio Windows &amp; Saída <span class="scen-tag">Fase 4</span></button>
+      <button class="scen-btn" data-scen="v070-call-sleep" onclick="goScenario('v070-call-sleep')">v0.7.0 F4B • Pausa em Ligação &amp; Sleep Fade-Out <span class="scen-tag">Fase 4</span></button>
+      <button class="scen-btn" data-scen="v070-zoom-follow" onclick="goScenario('v070-zoom-follow')">v0.7.0 F4C+4D • Zoom Seguir Cursor &amp; Polimento 60fps <span class="scen-tag">Fase 4</span></button>
       <button class="scen-btn" data-scen="v060-private-listening" onclick="goScenario('v060-private-listening')">Fase 3 • Escuta Privada (Modo PC) <span class="scen-tag">v0.6.0</span></button>
       <button class="scen-btn" data-scen="v060-share-pc" onclick="goScenario('v060-share-pc')">Fase 3 • Share "Enviar para o PC" (LAN_ONLY) <span class="scen-tag">v0.6.0</span></button>
       <button class="scen-btn" data-scen="v060-multi-pc" onclick="goScenario('v060-multi-pc')">Fase 3 • Multi-PC (Perfis &amp; Troca Rápida) <span class="scen-tag">v0.6.0</span></button>
@@ -3185,6 +3188,21 @@ const state = {
 };
 
 const SCENARIO_META = {
+  'v070-audio-mixer': {
+    title: 'v0.7.0 Fase 4A — Mixer de Áudio do Windows + Troca de Saída (Modo PC Exclusivo)',
+    sub: 'Folha flutuante GlassVariant.REGULAR com alça de arraste 36×4dp, seletor opaco de saída (TV HDMI Ativo | Fone Bluetooth | Alto-falantes) e lista 100% opaca por app com mudo ≥ 48dp e slider suave.',
+    tab: 'tela', seg: -1
+  },
+  'v070-call-sleep': {
+    title: 'v0.7.0 Fase 4B — Pausa Automática em Ligação (Ajustes) + Sleep Timer com Fade-Out 60s (Player)',
+    sub: 'Toggle desligado por padrão em Ajustes (permissão só se ativado) + Retomar ao encerrar chamada, e folha Velocidade & Timer com alça 36×4dp e toggle opaco Reduzir volume gradualmente (60s).',
+    tab: 'remote', seg: 1
+  },
+  'v070-zoom-follow': {
+    title: 'v0.7.0 Fase 4C & 4D — Zoom com Seguimento do Ponteiro (Aba Tela) & Polimento Liquid Glass 60fps',
+    sub: 'Pílula Seguir cursor (GlassVariant.CLEAR, ≥ 48dp) ao lado de 1.8x • Resetar sobre o vídeo + estados animados da pílula superior (Buscando / Conectando / Conectado) e feedback especular do Swipe Pad.',
+    tab: 'tela', seg: -1
+  },
   'v060-private-listening': {
     title: 'Fase 3A — Escuta Privada (Áudio do PC no Celular sem Vídeo • Modo PC Exclusivo)',
     sub: 'Gatilho ≥ 48dp na aba Tela / Mais PC + Folha GlassVariant.REGULAR com status, card 100% opaco, aviso de tela apagada, Mudo/Volume, Encerrar e Notificação Persistente do Android.',
@@ -3333,7 +3351,7 @@ function renderTopHud(scen, opts = {}) {
   const isOffline = opts.wolOffline ?? state.wolOffline;
   let rightHtml = '';
 
-  if (scen === 'v060-private-listening') {
+  if (scen === 'v070-audio-mixer' || scen === 'v070-zoom-follow' || scen === 'v060-private-listening') {
     rightHtml = `
       <div class="mode-top-actions">
         <button class="top-mini-btn active" onclick="setMonitor(1)"><span class="top-mini-vis">PC 1</span></button>
@@ -3426,7 +3444,7 @@ function renderTopHud(scen, opts = {}) {
               ? 'Primeiro acesso • Wi-Fi'
               : scen === 'v060-private-listening'
               ? 'PC Sala • Escuta 12 ms ▾'
-              : scen === 'v060-multi-pc'
+              : scen === 'v070-audio-mixer' || scen === 'v070-zoom-follow' || scen === 'v070-call-sleep' || scen === 'v060-multi-pc'
               ? 'PC Sala • 2 ms ▾'
               : isOffline && meta.tab === 'ajustes'
               ? 'PC desligado • Acordar'
@@ -5942,6 +5960,330 @@ function renderIconesWindow() {
   `;
 }
 
+function renderV070AudioMixer() {
+  const apps = [
+    { name: 'Nuvio HTPC', sub: 'Player Principal • 48 kHz', pct: 100, muted: false },
+    { name: 'Google Chrome', sub: 'Abas do navegador (2)', pct: 78, muted: false },
+    { name: 'Spotify', sub: 'Música em segundo plano', pct: 54, muted: false },
+    { name: 'Discord', sub: 'Canal de voz • Silenciado', pct: 0, muted: true }
+  ];
+
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+      <!-- 1. GATILHO NO MODO PC (Trackpad / Tela / Mais PC) >= 48dp -->
+      <section class="content-card" aria-label="Gatilho Mixer de Áudio no Modo PC" style="padding:5px 9px;border-radius:16px;display:flex;flex-direction:column;gap:2px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:8.6px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">
+          <span>1. MODO PC (TRACKPAD / TELA / MAIS PC) • GATILHO MIXER</span>
+          <span style="color:var(--status-on);">● Exclusivo Modo PC</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr 1.15fr;gap:5px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('tela-janela')">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;font-size:9.6px;font-weight:700;">
+              ${ico('volumeOn', 13)} Som PC
+            </span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('v060-private-listening')">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;font-size:9.6px;font-weight:700;">
+              ${ico('headphones', 13)} Escuta
+            </span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill primary" style="width:100%;height:32px;border-radius:10px;font-size:9.8px;font-weight:800;">
+              ${ico('sliders', 13)} Mixer: Ativo
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. FOLHA FLUTUANTE "MIXER DE ÁUDIO" (GlassVariant.REGULAR + Alça 36x4dp + Conteúdo 100% Opaco) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Folha Flutuante Mixer de Áudio do Windows" style="border-radius:24px;padding:7px 10px 9px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        <!-- Alça Superior de Arraste Padronizada (36dp x 4dp • Swipe-to-dismiss 1:1) -->
+        <div aria-hidden="true" style="width:36px;height:4px;border-radius:999px;background:var(--text-3);opacity:0.68;margin:2px auto 1px;flex-shrink:0;"></div>
+
+        <!-- Cabeçalho da Folha -->
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;">
+          <div style="min-width:0;">
+            <div style="font-size:8.6px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">MODO PC • ÁUDIO DO WINDOWS (ARRASTE 1:1)</div>
+            <div style="font-size:12.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">Mixer de Áudio • Audio Mixer</div>
+            <div style="font-size:8.9px;color:var(--text-2);white-space:nowrap;">Troca de saída e volume por aplicativo (100% opaco)</div>
+          </div>
+          <button class="float-close-btn" aria-label="Fechar Mixer de Áudio" onclick="goScenario('tela-janela')">
+            <span class="float-close-vis content-cell">${ico('close', 14)}</span>
+          </button>
+        </div>
+
+        <!-- SELETOR DE SAÍDA DE ÁUDIO (Card Interno 100% Opaco ContentCardSurface) -->
+        <div class="content-card" style="padding:6px 8px;border-radius:14px;display:flex;flex-direction:column;gap:3px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;">
+            <span style="font-size:8.5px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">SAÍDA DE ÁUDIO • OUTPUT DEVICE</span>
+            <span class="s-badge" style="color:var(--status-on);border-color:rgba(52,211,153,0.4);font-size:8.3px;">● TV HDMI Ativo</span>
+          </div>
+          <div style="display:grid;grid-template-columns:1.18fr 1.12fr 1fr;gap:4px;height:48px;align-items:center;">
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:33px;border-radius:10px;padding:0 5px;font-size:9.3px;font-weight:800;color:var(--status-on);border:1.5px solid var(--status-on);">
+                ● TV HDMI (Ativo)
+              </span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:33px;border-radius:10px;padding:0 5px;font-size:9.3px;font-weight:700;">
+                Fone Bluetooth
+              </span>
+            </button>
+            <button class="action-btn-48">
+              <span class="vis-pill content-cell" style="width:100%;height:33px;border-radius:10px;padding:0 5px;font-size:9.3px;font-weight:700;">
+                Alto-falantes
+              </span>
+            </button>
+          </div>
+        </div>
+
+        <!-- LISTA DE APLICATIVOS TOCANDO SOM (100% Opaca ContentCellSurface • Zero Vidro) -->
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${apps.map(app => `
+            <div class="content-cell" style="min-height:50px;padding:1px 8px 1px 3px;border-radius:13px;display:flex;align-items:center;gap:6px;${app.muted ? 'border-color:rgba(251,191,36,0.38);' : ''}">
+              <button class="action-btn-48" aria-label="${app.muted ? 'Ativar som de ' : 'Silenciar '}${app.name}">
+                <span class="vis-pill content-card" style="width:34px;height:34px;border-radius:10px;padding:0;${app.muted ? 'color:var(--status-warn);border-color:rgba(251,191,36,0.45);' : 'color:var(--text-1);'}">
+                  ${ico(app.muted ? 'mute' : 'volumeOn', 15)}
+                </span>
+              </button>
+              <div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:4px;padding-right:2px;">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;">
+                  <span style="font-size:10.3px;font-weight:800;color:var(--text-1);white-space:nowrap;">${app.name} <span style="font-weight:600;font-size:8.8px;color:var(--text-2);">• ${app.sub}</span></span>
+                  <span style="font-size:9.5px;font-weight:800;font-variant-numeric:tabular-nums;color:${app.muted ? 'var(--status-warn)' : 'var(--ctx-player)'};white-space:nowrap;">
+                    ${app.muted ? 'Mudo • 0%' : `${app.pct}%`}
+                  </span>
+                </div>
+                <!-- Slider de Volume Opaco com Thumb Circular -->
+                <div style="position:relative;height:6px;border-radius:999px;background:var(--content-card);display:flex;align-items:center;">
+                  <div style="width:${app.pct}%;height:100%;border-radius:999px;background:${app.muted ? 'var(--status-warn)' : 'var(--ctx-player)'};"></div>
+                  <span style="position:absolute;left:calc(${app.pct}% - 6px);width:12px;height:12px;border-radius:50%;background:var(--text-1);border:2px solid var(--content-card);box-shadow:0 1px 3px rgba(0,0,0,0.4);"></span>
+                </div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV070CallAndSleep() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;">
+      <!-- 1. EM AJUSTES (SettingsScreen.kt): Card 100% Opaco Pausa Automática em Chamadas Telefônicas -->
+      <section class="content-card" aria-label="Pausa Automática em Ligação em Ajustes" style="padding:7px 9px;border-radius:19px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:8.6px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">1. AJUSTES &gt; CHAMADAS TELEFÔNICAS (100% OPACO)</span>
+          <span class="s-badge" style="font-size:8.3px;">Padrão: Desligado</span>
+        </div>
+
+        <!-- Toggle Principal: Pausar Nuvio em chamadas telefônicas (Desligado por padrão) -->
+        <div class="content-cell" style="min-height:48px;padding:2px 4px 2px 9px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10.2px;font-weight:800;color:var(--text-1);white-space:nowrap;">Pausar Nuvio em chamadas telefônicas</div>
+            <div style="font-size:8.7px;color:var(--text-2);white-space:nowrap;">Só pede permissão de chamada se ativado</div>
+          </div>
+          <button class="action-btn-48" aria-label="Ativar Pausar Nuvio em chamadas telefônicas" style="padding:0 4px;">
+            <div class="nuvio-switch">
+              <div class="nuvio-switch-knob"></div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Sub-opção: Retomar ao encerrar chamada -->
+        <div class="content-cell" style="min-height:48px;padding:2px 4px 2px 9px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10.2px;font-weight:800;color:var(--text-1);white-space:nowrap;">Retomar ao encerrar chamada</div>
+            <div style="font-size:8.7px;color:var(--text-2);white-space:nowrap;">EN: Auto-resume playback when phone call ends</div>
+          </div>
+          <button class="action-btn-48" aria-label="Alternar Retomar ao encerrar chamada" style="padding:0 4px;">
+            <div class="nuvio-switch on">
+              <div class="nuvio-switch-knob"></div>
+            </div>
+          </button>
+        </div>
+      </section>
+
+      <!-- 2. FOLHA "VELOCIDADE & TIMER" DO PLAYER (PlayerSheets.kt • GlassVariant.REGULAR + Fade-Out 60s) -->
+      <section class="glass-regular elevated" role="dialog" aria-label="Folha Velocidade e Timer com Fade-Out" style="border-radius:24px;padding:7px 10px 9px;display:flex;flex-direction:column;gap:5px;flex-shrink:0;">
+        <!-- Alça Superior de Arraste Padronizada (36dp x 4dp) -->
+        <div aria-hidden="true" style="width:36px;height:4px;border-radius:999px;background:var(--text-3);opacity:0.68;margin:2px auto 1px;flex-shrink:0;"></div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:6px;height:48px;">
+          <div style="min-width:0;">
+            <div style="font-size:8.6px;font-weight:800;letter-spacing:0.05em;color:var(--ctx-player);">2. MODO NUVIO (PLAYERSHEETS) • SLEEP TIMER + FADE-OUT</div>
+            <div style="font-size:12.2px;font-weight:800;color:var(--text-1);white-space:nowrap;">Velocidade &amp; Timer • Speed &amp; Sleep</div>
+            <div style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">Alça 36×4dp arrastável • Controles internos 100% opacos</div>
+          </div>
+          <button class="float-close-btn" aria-label="Fechar Velocidade e Timer" onclick="goScenario('remote-player')">
+            <span class="float-close-vis content-cell">${ico('close', 14)}</span>
+          </button>
+        </div>
+
+        <!-- Opções de Sleep Timer: 15m, 30m, 45m, 60m + Fim do Episódio (>= 48dp cada) -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:4px;height:48px;align-items:center;">
+          ${['15m', '30m ●', '45m', '60m'].map((t, idx) => `
+            <button class="action-btn-48">
+              <span class="vis-pill ${idx === 1 ? 'primary' : 'content-cell'}" style="width:100%;height:33px;border-radius:10px;font-size:9.8px;font-weight:700;">${t}</span>
+            </button>
+          `).join('')}
+        </div>
+
+        <div style="display:grid;grid-template-columns:1.35fr 0.85fr;gap:5px;height:48px;align-items:center;">
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:33px;border-radius:10px;padding:0 6px;font-size:9.5px;font-weight:700;border-color:rgba(196,181,253,0.38);">
+              ${ico('timer', 13)} Fim do episódio (S01 E03)
+            </span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:33px;border-radius:10px;padding:0 6px;font-size:9.5px;font-weight:700;">
+              Desativar Timer
+            </span>
+          </button>
+        </div>
+
+        <!-- NOVO TOGGLE COMPACTO OPACO: Reduzir volume gradualmente (60s) (Fade-Out) -->
+        <div class="content-card" style="min-height:50px;padding:2px 4px 2px 10px;border-radius:13px;border:1.5px solid var(--ctx-player);display:flex;align-items:center;justify-content:space-between;gap:6px;">
+          <div style="min-width:0;flex:1;">
+            <div style="font-size:10px;font-weight:800;color:var(--text-1);white-space:nowrap;">Reduzir volume gradualmente (60s)</div>
+            <div style="font-size:8.6px;color:var(--text-2);white-space:nowrap;">Fade-out suave do som no último minuto antes de pausar</div>
+          </div>
+          <button class="action-btn-48" aria-label="Alternar Reduzir volume gradualmente 60s" style="padding:0 4px;">
+            <div class="nuvio-switch on">
+              <div class="nuvio-switch-knob"></div>
+            </div>
+          </button>
+        </div>
+
+        <!-- Velocidade de Reprodução (5 botões >= 48dp) -->
+        <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:4px;height:48px;align-items:center;">
+          ${['0.75x', '1.0x ●', '1.25x', '1.5x', '2.0x'].map((sp, i) => `
+            <button class="action-btn-48">
+              <span class="vis-pill ${i === 1 ? 'primary' : 'content-cell'}" style="width:100%;height:32px;border-radius:10px;padding:0 2px;font-size:9.4px;font-weight:700;">${sp}</span>
+            </button>
+          `).join('')}
+        </div>
+      </section>
+    </div>
+  `;
+}
+
+function renderV070ZoomAndPolish() {
+  return `
+    <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
+      <!-- 1. ZOOM COM SEGUIMENTO DO PONTEIRO NA ABA TELA (GlassVariant.CLEAR: 1.8x • Resetar + Seguir cursor) -->
+      <section class="content-card" aria-label="Zoom com Seguimento do Ponteiro no Screen Share" style="padding:6px 9px;border-radius:18px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:8.6px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">1. ABA TELA (ZOOM &gt; 1.0X) • SEGUIMENTO DO CURSOR</span>
+          <span class="s-badge accent" style="font-size:8.3px;">GlassVariant.CLEAR</span>
+        </div>
+
+        <!-- Viewport 16:9 Simulada com Zoom 1.8x e Pílulas CLEAR (+35% scrim adaptativo) -->
+        <div class="tela-backdrop-light" style="position:relative;height:146px;border-radius:14px;overflow:hidden;border:1px solid var(--content-border);background:linear-gradient(145deg,#1e293b 0%,#334155 48%,#475569 100%);display:flex;flex-direction:column;justify-content:space-between;padding:2px 6px 8px;">
+          <!-- Barra de Pílulas Superiores GlassVariant.CLEAR (>= 48dp cada) -->
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;height:48px;">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <button class="action-btn-48" style="min-width:96px;" aria-label="Resetar zoom 1.8x">
+                <span class="glass-clear tela-clear-adaptive" style="height:32px;border-radius:999px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center;font-size:9.6px;font-weight:800;">
+                  1.8x • Resetar
+                </span>
+              </button>
+              <button class="action-btn-48" style="min-width:124px;" aria-label="Alternar Seguir cursor no zoom">
+                <span class="glass-clear tela-clear-adaptive" style="height:32px;border-radius:999px;padding:0 9px;display:inline-flex;align-items:center;justify-content:center;gap:4px;font-size:9.6px;font-weight:800;border-color:rgba(52,211,153,0.75);">
+                  ${ico('focus', 13)} Seguir cursor <b style="color:#34d399;">●</b>
+                </span>
+              </button>
+            </div>
+            <button class="action-btn-48" style="min-width:64px;" onclick="goScenario('tela-paisagem')" aria-label="Entrar em tela cheia">
+              <span class="glass-clear tela-clear-adaptive" style="height:32px;border-radius:999px;padding:0 8px;display:inline-flex;align-items:center;justify-content:center;gap:3px;font-size:9.3px;font-weight:700;">
+                ${ico('fullscreen', 12)} Cheia
+              </span>
+            </button>
+          </div>
+
+          <!-- Zona Central Segura (60% da Viewport) Acompanhando o Ponteiro do Mouse -->
+          <div style="margin:0 auto;width:236px;height:54px;border-radius:11px;border:1.5px dashed rgba(52,211,153,0.72);background:rgba(9,11,18,0.62);display:flex;align-items:center;justify-content:space-between;padding:0 10px;color:#ffffff;">
+            <div style="display:flex;align-items:center;gap:7px;">
+              <span style="width:22px;height:22px;border-radius:50%;background:rgba(52,211,153,0.25);border:1.5px solid #34d399;display:flex;align-items:center;justify-content:center;color:#34d399;">
+                ${ico('focus', 13)}
+              </span>
+              <div>
+                <div style="font-size:9.6px;font-weight:800;">Ponteiro rastreado (Ativo por padrão)</div>
+                <div style="font-size:8.4px;color:#cbd5e1;">Viewport acompanha o cursor suavemente a 60fps</div>
+              </div>
+            </div>
+            <span class="s-badge" style="background:rgba(52,211,153,0.2);color:#34d399;border-color:rgba(52,211,153,0.45);font-size:8.2px;">1.8x</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 2. POLIMENTO LIQUID GLASS 60FPS: Estados Animados da Pílula Superior (Buscando / Conectando / Conectado) -->
+      <section class="content-card" aria-label="Estados Animados da Pílula Superior" style="padding:6px 9px;border-radius:17px;display:flex;flex-direction:column;gap:3px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:8.6px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">2. PÍLULA SUPERIOR • 3 ESTADOS (BUSCANDO / CONECTANDO / OK)</span>
+          <span class="s-badge" style="font-size:8.3px;">Spring 280ms</span>
+        </div>
+        <div style="display:grid;grid-template-columns:0.95fr 1fr 1.15fr;gap:4px;height:48px;align-items:center;">
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:999px;padding:0 5px;font-size:8.9px;font-weight:700;color:var(--status-warn);">
+              ● Buscando…
+            </span>
+          </button>
+          <button class="action-btn-48">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:999px;padding:0 5px;font-size:8.9px;font-weight:700;color:var(--status-warn);">
+              ● Conectando…
+            </span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('v060-multi-pc')">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:999px;padding:0 6px;font-size:9px;font-weight:800;color:var(--status-on);border:1.5px solid var(--status-on);">
+              ● PC Sala • 2 ms ▾
+            </span>
+          </button>
+        </div>
+      </section>
+
+      <!-- 3. POLIMENTO 60FPS: Feedback Visual do Swipe Pad (Ponto Especular Vetorial vs. Redução de Movimento) -->
+      <section class="content-card" aria-label="Feedback Visual do Swipe Pad e Alça de Arraste" style="padding:6px 9px;border-radius:18px;display:flex;flex-direction:column;gap:4px;flex-shrink:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:8.6px;font-weight:800;letter-spacing:0.04em;color:var(--text-2);">3. SWIPE PAD (PONTO ESPECULAR) &amp; FOLHAS ARRASTÁVEIS 1:1</span>
+          <span class="s-badge accent" style="font-size:8.3px;">60fps / RM OK</span>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;align-items:center;">
+          <!-- Estado Normal 60fps: Ponto Especular Seguindo o Vetor do Polegar -->
+          <button class="glass-regular elevated" onclick="goScenario('v054-swipe-pad')" style="height:102px;border-radius:24px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px;cursor:pointer;font-family:var(--font-ui);">
+            <!-- Halo especular deslocado na direção do swipe (Direita) -->
+            <span aria-hidden="true" style="position:absolute;right:14px;top:50%;transform:translateY(-50%);width:36px;height:36px;border-radius:50%;background:radial-gradient(circle,rgba(196,181,253,0.42) 0%,transparent 72%);pointer-events:none;"></span>
+            <span style="font-size:9.3px;font-weight:800;color:var(--ctx-player);position:relative;z-index:2;">60fps • Vetor Polegar</span>
+            <span style="font-size:8.5px;color:var(--text-1);font-weight:700;position:relative;z-index:2;">● ───► Chevron ›</span>
+            <span style="font-size:8.2px;color:var(--text-2);position:relative;z-index:2;">Brilho especular segue o dedo</span>
+          </button>
+
+          <!-- Estado Redução de Movimento Ativa: Estático sem trilha animada -->
+          <button class="glass-regular elevated" onclick="goScenario('v054-swipe-pad')" style="height:102px;border-radius:24px;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:6px;cursor:pointer;font-family:var(--font-ui);">
+            <span style="font-size:9.3px;font-weight:800;color:var(--status-on);position:relative;z-index:2;">Redução de Movimento</span>
+            <span style="font-size:8.5px;color:var(--text-1);font-weight:700;position:relative;z-index:2;">[ Chevron › Estático ]</span>
+            <span style="font-size:8.2px;color:var(--text-2);position:relative;z-index:2;">Zero animação • Háptica direta</span>
+          </button>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;height:48px;align-items:center;">
+          <button class="action-btn-48" onclick="goScenario('v070-audio-mixer')">
+            <span class="vis-pill content-cell" style="width:100%;height:32px;border-radius:10px;font-size:9.4px;font-weight:700;">
+              Ver Alça 36×4dp no Mixer
+            </span>
+          </button>
+          <button class="action-btn-48" onclick="goScenario('v054-swipe-pad')">
+            <span class="vis-pill primary" style="width:100%;height:32px;border-radius:10px;font-size:9.4px;font-weight:700;">
+              Abrir Swipe Pad Completo
+            </span>
+          </button>
+        </div>
+      </section>
+    </div>
+  `;
+}
+
 function renderV060PrivateListening() {
   return `
     <div class="tab-body morph-in" style="padding:0 12px 6px;display:flex;flex-direction:column;justify-content:space-between;gap:5px;">
@@ -6235,7 +6577,7 @@ function renderV060MultiPc() {
           <div class="content-card" style="padding:2px 6px 2px 9px;border-radius:13px;border:1.5px solid var(--status-on);display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:48px;">
             <button style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:1px;cursor:pointer;font-family:var(--font-ui);">
               <span style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Sala • Ativo • 2 ms • Wi-Fi</span>
-              <span style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">192.168.1.42 • Ponte Nuvio 47321 Sincronizada</span>
+              <span style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">192.0.2.10 • Ponte Nuvio 47321 Sincronizada</span>
             </button>
             <span class="s-badge" style="color:var(--status-on);border-color:rgba(52,211,153,0.4);flex-shrink:0;">● Conectado</span>
           </div>
@@ -6244,7 +6586,7 @@ function renderV060MultiPc() {
           <div class="content-cell" style="padding:2px 5px 2px 9px;border-radius:13px;display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
             <button style="flex:1;min-width:0;min-height:48px;border:none;background:transparent;padding:0;text-align:left;display:flex;flex-direction:column;justify-content:center;gap:1px;cursor:pointer;font-family:var(--font-ui);">
               <span style="font-size:10.5px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Escritório • Disponível • Wi-Fi</span>
-              <span style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">192.168.1.88 • Toque para alternar agora</span>
+              <span style="font-size:8.8px;color:var(--text-2);white-space:nowrap;">192.0.2.20 • Toque para alternar agora</span>
             </button>
             <button class="action-btn-48" style="min-width:74px;">
               <span class="vis-pill content-card" style="width:100%;height:32px;border-radius:10px;padding:0 8px;font-size:9.5px;font-weight:700;">Alternar</span>
@@ -6291,7 +6633,7 @@ function renderV060MultiPc() {
         <div class="content-cell" style="padding:2px 4px 2px 8px;border-radius:12px;display:flex;align-items:center;justify-content:space-between;gap:4px;min-height:48px;">
           <div style="min-width:0;flex:1;">
             <div style="font-size:10px;font-weight:800;color:var(--text-1);white-space:nowrap;">PC Sala <span style="color:var(--status-on);">(● Ativo)</span></div>
-            <div style="font-size:8.6px;color:var(--text-2);white-space:nowrap;">192.168.1.42:8787 • Token SHA-256</div>
+            <div style="font-size:8.6px;color:var(--text-2);white-space:nowrap;">192.0.2.10:8787 • Token SHA-256</div>
           </div>
           <div style="display:flex;align-items:center;gap:3px;flex-shrink:0;">
             <button class="action-btn-48" style="min-width:66px;">
@@ -7169,7 +7511,13 @@ function renderPhoneHtml(scen, opts = {}) {
   const meta = SCENARIO_META[scen];
   const activeSheet = opts.playerSheet !== undefined ? opts.playerSheet : (meta.seg === 1 ? state.playerSheet : '');
   let innerBody = '';
-  if (scen === 'v060-private-listening') {
+  if (scen === 'v070-audio-mixer') {
+    innerBody = renderV070AudioMixer();
+  } else if (scen === 'v070-call-sleep') {
+    innerBody = renderV070CallAndSleep();
+  } else if (scen === 'v070-zoom-follow') {
+    innerBody = renderV070ZoomAndPolish();
+  } else if (scen === 'v060-private-listening') {
     innerBody = renderV060PrivateListening();
   } else if (scen === 'v060-share-pc') {
     innerBody = renderV060SharePc();
@@ -7239,9 +7587,30 @@ function renderPhoneHtml(scen, opts = {}) {
   `;
 }
 
-// ==================== PAINEL OVERVIEW (v0.6.0 FASE 3 + v0.5.4 + AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
+// ==================== PAINEL OVERVIEW (v0.7.0 FASE 4 + v0.6.0 FASE 3 + v0.5.4 + AUTO-UPDATE + NUVIO DESKREMOTE + FASE 3 + FASE 2 + FASE 1) ====================
 function renderOverviewHtml() {
   return `
+    <section class="overview-section" id="overviewV070Section" style="width:1180px;max-width:none;margin-left:calc(50% - 590px);">
+      <div class="overview-section-head">
+        <h2>v0.7.0 Fase 4 — Mixer de Áudio do Windows &amp; Troca de Saída (Modo PC), Pausa em Ligação + Sleep Timer Fade-Out &amp; Zoom Seguindo o Cursor + Polimento 60fps</h2>
+        <span>Liquid Glass estrito (zero Material 3) • Folhas REGULAR com alça 36×4dp • Listas, sliders e cards 100% opacos • Pílulas CLEAR com +35% scrim • Alvos ≥ 48dp</span>
+      </div>
+      <div class="overview-row" style="flex-wrap:nowrap;gap:18px;">
+        <div class="ov-item">
+          <div class="ov-label">F4A. Modo PC • Mixer de Áudio do Windows + Troca de Saída</div>
+          ${renderPhoneHtml('v070-audio-mixer')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F4B. Ajustes &amp; Player • Pausa em Ligação + Sleep Timer Fade-Out (60s)</div>
+          ${renderPhoneHtml('v070-call-sleep')}
+        </div>
+        <div class="ov-item">
+          <div class="ov-label">F4C+4D. Aba Tela • Zoom Seguir Cursor (CLEAR) &amp; Polimento 60fps</div>
+          ${renderPhoneHtml('v070-zoom-follow')}
+        </div>
+      </div>
+    </section>
+
     <section class="overview-section" id="overviewV060Section" style="width:1180px;max-width:none;margin-left:calc(50% - 590px);">
       <div class="overview-section-head">
         <h2>v0.6.0 Fase 3 — Diferenciais de Ecossistema: Escuta Privada (Modo PC), Share Sheet "Enviar para o PC" (LAN_ONLY ≤ 50 MB) &amp; Multi-PC (Perfis Pareados)</h2>

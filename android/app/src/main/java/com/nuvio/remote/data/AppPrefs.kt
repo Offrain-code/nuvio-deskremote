@@ -31,6 +31,21 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean(K_REMOTE_SWIPE_MODE, false)
         set(v) = sp.edit().putBoolean(K_REMOTE_SWIPE_MODE, v).apply()
 
+    /** true = automatically pause Nuvio playback when an incoming/active phone call occurs (opt-in). */
+    var pauseOnCall: Boolean
+        get() = sp.getBoolean(K_PAUSE_ON_CALL, false)
+        set(v) = sp.edit().putBoolean(K_PAUSE_ON_CALL, v).apply()
+
+    /** true = resume Nuvio playback automatically when the phone call ends (requires pauseOnCall). */
+    var resumeAfterCall: Boolean
+        get() = sp.getBoolean(K_RESUME_AFTER_CALL, true)
+        set(v) = sp.edit().putBoolean(K_RESUME_AFTER_CALL, v).apply()
+
+    /** true = gradually fade out Nuvio volume during the final 60s of the Sleep Timer. */
+    var sleepFadeOutEnabled: Boolean
+        get() = sp.getBoolean(K_SLEEP_FADE_OUT, true)
+        set(v) = sp.edit().putBoolean(K_SLEEP_FADE_OUT, v).apply()
+
     var mouseSensitivity: Float
         get() = sp.getFloat(K_SENS, 1.6f)
         set(v) = sp.edit().putFloat(K_SENS, v).apply()
@@ -115,6 +130,9 @@ class AppPrefs(context: Context) {
         const val K_THEME_MODE = "app_theme_mode"
         const val K_TRACKPAD_LEFT_HANDED = "trackpad_left_handed"
         const val K_REMOTE_SWIPE_MODE = "remote_swipe_mode"
+        const val K_PAUSE_ON_CALL = "pause_on_call"
+        const val K_RESUME_AFTER_CALL = "resume_after_call"
+        const val K_SLEEP_FADE_OUT = "sleep_fade_out_enabled"
         const val K_SENS = "mouse_sensitivity"
         const val K_HAPTICS = "haptics_enabled"
         const val K_HAPTIC_STRENGTH = "haptic_strength"

@@ -424,4 +424,9 @@ test('validateHttpUrl and sanitizeUploadFilename block unsafe schemes and path t
   assert.equal(sanitizeUploadFilename('relatorio%20q4.pdf'), 'relatorio q4.pdf');
   assert.equal(sanitizeUploadFilename('a<b>c:d|e?.txt'), 'a_b_c_d_e_.txt');
   assert.match(sanitizeUploadFilename('...'), /^nuvio-upload-\d+\.bin$/);
+
+  const { isValidAudioDeviceId } = require('../dist/audio/windowsAudioMixer');
+  assert.equal(isValidAudioDeviceId('{0.0.0.00000000}.{11111111-2222-3333-4444-555555555555}'), true);
+  assert.equal(isValidAudioDeviceId("'; calc.exe"), false);
+  assert.equal(isValidAudioDeviceId(''), false);
 });

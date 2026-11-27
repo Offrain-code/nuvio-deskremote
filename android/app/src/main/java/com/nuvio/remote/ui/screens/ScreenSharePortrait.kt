@@ -30,6 +30,7 @@ import androidx.compose.material.icons.rounded.Headphones
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.ScreenRotation
 import androidx.compose.material.icons.rounded.SwapHoriz
+import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -82,6 +83,7 @@ internal fun PortraitScreenShareContent(
     onReconnect: () -> Unit,
     privateListeningActive: Boolean = false,
     onTogglePrivateListening: () -> Unit = {},
+    onOpenAudioMixer: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val scheme = LocalNuvioColors.current
@@ -145,6 +147,7 @@ internal fun PortraitScreenShareContent(
                 onEnterFullscreen = onEnterFullscreen,
                 privateListeningActive = privateListeningActive,
                 onTogglePrivateListening = onTogglePrivateListening,
+                onOpenAudioMixer = onOpenAudioMixer,
             )
         }
     }
@@ -222,6 +225,7 @@ private fun PortraitStatusControlCard(
     onEnterFullscreen: () -> Unit,
     privateListeningActive: Boolean = false,
     onTogglePrivateListening: () -> Unit = {},
+    onOpenAudioMixer: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val hapticsEnabled = LocalHapticsEnabled.current
@@ -321,9 +325,9 @@ private fun PortraitStatusControlCard(
         ) {
             PortraitCompactPill(
                 label = if (privateListeningActive) {
-                    l10n("Private Audio: On", "Escuta Privada: Ativa")
+                    l10n("Private: On", "Escuta: Ativa")
                 } else {
-                    l10n("Private Listening", "Escuta Privada")
+                    l10n("Private Audio", "Escuta Privada")
                 },
                 icon = Icons.Rounded.Headphones,
                 highlighted = privateListeningActive,
@@ -331,6 +335,17 @@ private fun PortraitStatusControlCard(
                 onClick = {
                     if (hapticsEnabled) Haptics.toggle(context)
                     onTogglePrivateListening()
+                },
+                modifier = Modifier.weight(1f),
+            )
+            PortraitCompactPill(
+                label = l10n("Audio Mixer", "Mixer Áudio"),
+                icon = Icons.Rounded.Tune,
+                highlighted = false,
+                visualHeight = 38.dp,
+                onClick = {
+                    if (hapticsEnabled) Haptics.action(context)
+                    onOpenAudioMixer()
                 },
                 modifier = Modifier.weight(1f),
             )

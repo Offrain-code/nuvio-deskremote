@@ -189,6 +189,9 @@ class NuvioConnection(
     private val _privateListeningState = MutableStateFlow(PrivateListeningState.IDLE)
     val privateListeningState: StateFlow<PrivateListeningState> = _privateListeningState
 
+    private val _audioMixerState = MutableStateFlow(AudioMixerState())
+    val audioMixerState: StateFlow<AudioMixerState> = _audioMixerState
+
     /** Real-time decoded MJPEG fallback frame for the Screen tab. */
     private val _screenFrame = MutableStateFlow<Bitmap?>(null)
     val screenFrame: StateFlow<Bitmap?> = _screenFrame
@@ -1044,6 +1047,18 @@ class NuvioConnection(
         return currentWs.send(JSONObject().put("type", "private_audio_stop").toString())
     }
 
+    fun requestAudioMixer(): Boolean = send("audio_mixer_get")
+
+    fun setAudioMixerApp(pid: Int, volume: Int? = null, muted: Boolean? = null): Boolean = send("audio_mixer_set_app") {
+        put("pid", pid)
+        if (volume != null) put("volume", volume.coerceIn(0, 100))
+        if (muted != null) put("muted", muted)
+    }
+
+    fun setAudioMixerOutput(deviceId: String): Boolean = send("audio_mixer_set_output") {
+        put("deviceId", deviceId)
+    }
+
     /** Sends a trickle ICE candidate from the app to the server. */
     fun sendIceCandidate(candidate: String, mid: String) = send("webrtc_candidate") {
         put("candidate", candidate)
@@ -1129,15 +1144,8 @@ class NuvioConnection(
                 )
             }
             "screen_status" -> handleScreenStatus(obj)
-            "private_audio_status" -> {
-                val active = obj.optBoolean("active", false)
-                _privateListeningState.value = if (active) {
-                    PrivateListeningState.ACTIVE
-                } else {
-                    if (_screenStatus.value == "stopped") stopAudioTrack()
-                    PrivateListeningState.IDLE
-                }
-            }
+            "private_audio_status" -> handlePrivateAudioStatus(obj)
+            "audio_mixer_state" -> _audioMixerState.value = parseAudioMixerState(obj)
             "screen_frame" -> {
                 val b64 = obj.optString("data", "")
                 if (b64.isNotEmpty()) {
@@ -1170,6 +1178,16 @@ class NuvioConnection(
         _stateConfirmed.value = confirmed
     }
 
+    private fun handlePrivateAudioStatus(obj: JSONObject) {
+        val active = obj.optBoolean("active", false)
+        _privateListeningState.value = if (active) {
+            PrivateListeningState.ACTIVE
+        } else {
+            if (_screenStatus.value == "stopped") stopAudioTrack()
+            PrivateListeningState.IDLE
+        }
+    }
+
     private fun handleScreenStatus(obj: JSONObject) {
         val st = obj.optString("status", "stopped")
         _screenStatus.value = st
@@ -1184,5 +1202,42 @@ class NuvioConnection(
                 stopAudioTrack()
             }
         }
+    }
+
+    private fun parseAudioMixerState(obj: JSONObject): AudioMixerState {
+        val outputsArr = obj.optJSONArray("outputs")
+        val outputs = buildList {
+            if (outputsArr != null) {
+                for (i in 0 until outputsArr.length()) {
+                    val item = outputsArr.optJSONObject(i) ?: continue
+                    val id = item.optString("id", "").trim()
+                    val name = item.optString("name", "").trim()
+                    if (id.isNotEmpty() && name.isNotEmpty()) {
+                        add(AudioOutputDevice(id = id, name = name, isDefault = item.optBoolean("isDefault", false)))
+                    }
+                }
+            }
+        }
+        val sessionsArr = obj.optJSONArray("sessions")
+        val sessions = buildList {
+            if (sessionsArr != null) {
+                for (i in 0 until sessionsArr.length()) {
+                    val item = sessionsArr.optJSONObject(i) ?: continue
+                    val pid = item.optInt("pid", 0)
+                    val name = item.optString("name", "").trim()
+                    if (pid > 0 && name.isNotEmpty()) {
+                        add(
+                            AudioAppSession(
+                                pid = pid,
+                                name = name,
+                                volume = item.optInt("volume", 100).coerceIn(0, 100),
+                                muted = item.optBoolean("muted", false),
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        return AudioMixerState(outputs = outputs, sessions = sessions)
     }
 }

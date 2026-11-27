@@ -14,7 +14,6 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.aspectRatio
-import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
@@ -207,6 +205,8 @@ fun ScreenShareScreen(
     )
 
     var showPowerDialog by remember { mutableStateOf(false) }
+    var showAudioMixerDialog by remember { mutableStateOf(false) }
+    val audioMixerState by conn.audioMixerState.collectAsState()
 
     val moreCallbacks = buildMorePcCallbacks(
         conn = conn,
@@ -306,6 +306,7 @@ fun ScreenShareScreen(
                 }
                 onOpenPrivateListening()
             },
+            onOpenAudioMixer = { showAudioMixerDialog = true },
             modifier = modifier,
         )
     }
@@ -314,6 +315,16 @@ fun ScreenShareScreen(
         PcPowerDialog(
             onAction = { action -> conn.sendWindow(action) },
             onDismiss = { showPowerDialog = false },
+        )
+    }
+
+    if (showAudioMixerDialog) {
+        com.nuvio.remote.ui.components.AudioMixerSheetDialog(
+            state = audioMixerState,
+            onRefresh = { conn.requestAudioMixer() },
+            onSelectOutput = { id -> conn.setAudioMixerOutput(id) },
+            onSetAppVolume = { pid, vol, muted -> conn.setAudioMixerApp(pid, vol, muted) },
+            onDismiss = { showAudioMixerDialog = false },
         )
     }
 }
@@ -512,9 +523,20 @@ internal fun VideoStreamViewport(
     val hapticsEnabled = LocalHapticsEnabled.current
     var zoom by remember { mutableFloatStateOf(1f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
+    var followCursorOnZoom by rememberSaveable { mutableStateOf(true) }
     var containerSize by remember { mutableStateOf(IntSize(1, 1)) }
     var videoOrigin by remember { mutableStateOf(Offset.Zero) }
     var videoSize by remember { mutableStateOf(IntSize(1, 1)) }
+    val remoteCursor by conn.remoteCursor.collectAsState()
+
+    CursorFollowZoomEffect(
+        remoteCursor = remoteCursor,
+        zoom = zoom,
+        followCursor = followCursorOnZoom,
+        videoSize = videoSize,
+        currentPan = panOffset,
+        onPanChange = { panOffset = it },
+    )
     val currentDirectTouch by rememberUpdatedState(directTouch)
     val currentMonitor by rememberUpdatedState(activeMonitor)
     val currentOnInteraction by rememberUpdatedState(onInteraction)
@@ -667,50 +689,22 @@ internal fun VideoStreamViewport(
                 .background(Color.White.copy(alpha = 0.26f)),
         )
 
-        if (zoom > 1.01f) {
-            ZoomResetPill(
-                isBackdropLight = isBackdropLight,
-                onReset = {
-                    if (currentHaptics) Haptics.action(context)
-                    zoom = 1f
-                    panOffset = Offset.Zero
-                },
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .displayCutoutPadding()
-                    .padding(top = 6.dp, start = 10.dp),
-            )
-        }
-    }
-}
-
-@Composable
-private fun ZoomResetPill(isBackdropLight: Boolean, onReset: () -> Unit, modifier: Modifier = Modifier) {
-    val scheme = LocalNuvioColors.current
-    Box(
-        modifier = modifier
-            .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
-            .clickable(onClick = onReset),
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
+        ScreenShareZoomOverlayRow(
+            zoom = zoom,
+            followCursor = followCursorOnZoom,
+            isBackdropLight = isBackdropLight,
+            onReset = {
+                zoom = 1f
+                panOffset = Offset.Zero
+            },
+            onToggleFollowCursor = {
+                followCursorOnZoom = !followCursorOnZoom
+            },
             modifier = Modifier
-                .nuvioGlass(
-                    shape = CircleShape,
-                    variant = GlassVariant.CLEAR,
-                    isBackdropLight = isBackdropLight,
-                    captureStageBackdrop = false,
-                    resting = false,
-                )
-                .padding(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            NuvioText(
-                text = "1x",
-                style = NuvioTypography.KeyLabelCompact,
-                color = scheme.clearOverlayText,
-                shadow = ClearContentShadow,
-            )
-        }
+                .align(Alignment.TopStart)
+                .displayCutoutPadding()
+                .padding(top = 6.dp, start = 10.dp),
+        )
     }
 }
 

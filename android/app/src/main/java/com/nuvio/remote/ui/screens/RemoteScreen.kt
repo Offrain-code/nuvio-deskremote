@@ -209,10 +209,10 @@ fun RemoteScreen(
         if (!shouldExpand && activeSheet != PlayerSheetType.SOURCES) activeSheet = PlayerSheetType.NONE
     }
 
-    LaunchedEffect(sources != null) {
-        if (sources != null) {
+    LaunchedEffect(sources?.title, sources?.sources?.size, sources != null) {
+        if (sources != null && (sources!!.sources.isNotEmpty() || sources!!.loading)) {
             activeSheet = PlayerSheetType.SOURCES
-        } else if (activeSheet == PlayerSheetType.SOURCES) {
+        } else if (sources == null && activeSheet == PlayerSheetType.SOURCES) {
             activeSheet = PlayerSheetType.NONE
         }
     }
@@ -360,8 +360,9 @@ fun RemoteScreen(
                     onSetVolume = { bridge.setVolume(it) },
                     onControl = { action, value -> bridge.sendControl(action, value) },
                     onOpenSheet = { target ->
-                        if (target == PlayerSheetType.SOURCES && sources == null) {
+                        if (target == PlayerSheetType.SOURCES) {
                             bridge.requestSources(force = true)
+                            activeSheet = PlayerSheetType.SOURCES
                         } else {
                             requestSheetData(bridge, target)
                             activeSheet = target

@@ -189,6 +189,13 @@ fun NuvioRemoteRoot(
         onHideSheet = { showPrivateListeningSheet = false },
     )
 
+    CallAutoPauseAndSleepEffects(
+        context = context,
+        appPrefs = appPrefs,
+        conn = conn,
+        nowPlaying = nowPlaying,
+    )
+
     LaunchedEffect(liveWakeInfo) {
         liveWakeInfo?.let {
             appPrefs.saveWakeInfo(it)
@@ -495,6 +502,40 @@ private fun PrivateListeningServiceEffects(
             PrivateListeningService.start(context, activePcName, pingMs)
         } else {
             PrivateListeningService.stop(context)
+        }
+    }
+}
+
+@Composable
+private fun CallAutoPauseAndSleepEffects(
+    context: android.content.Context,
+    appPrefs: AppPrefs,
+    conn: NuvioConnection,
+    nowPlaying: com.nuvio.remote.connection.NuvioNowPlaying?,
+) {
+    val latestNowPlaying = androidx.compose.runtime.rememberUpdatedState(nowPlaying)
+    DisposableEffect(context, conn) {
+        val observer = com.nuvio.remote.media.CallPauseObserver(
+            context = context,
+            isPlayingProvider = { latestNowPlaying.value?.isPlaying == true },
+            resumeAfterCallProvider = { appPrefs.resumeAfterCall },
+            onPause = { conn.sendKey("Space") },
+            onResume = { conn.sendKey("Space") },
+        )
+        if (appPrefs.pauseOnCall) observer.start()
+        onDispose { observer.stop() }
+    }
+
+    val sleepMins = nowPlaying?.sleepMinutes ?: 0
+    val startVol = nowPlaying?.volume ?: -1
+    LaunchedEffect(sleepMins == 1, appPrefs.sleepFadeOutEnabled) {
+        if (sleepMins == 1 && appPrefs.sleepFadeOutEnabled && startVol > 10) {
+            val steps = 6
+            for (step in 1..steps) {
+                kotlinx.coroutines.delay(9_500L)
+                val nextVol = ((startVol * (steps - step)) / steps).coerceAtLeast(0)
+                conn.bridge.setVolume(nextVol)
+            }
         }
     }
 }

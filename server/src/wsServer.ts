@@ -14,6 +14,11 @@ import { ScreenStateMachine } from './state';
 import { InputInjector } from './injection/input';
 import { getClipboardTextNative, setClipboardTextNative } from './injection/win32';
 import { PinManager, TokenStore } from './auth';
+import {
+  getWindowsAudioMixerState,
+  setWindowsAppVolume,
+  setWindowsDefaultAudioOutput,
+} from './audio/windowsAudioMixer';
 import { AudioLoopbackStreamer } from './screen/audioLoopback';
 import { ScreenServer } from './screen/screenServer';
 import { GdiCapture } from './screen/capture';
@@ -41,7 +46,7 @@ import type {
 } from './protocol';
 
 const SERVER_NAME = 'nuvio-deskremote-companion';
-const SERVER_VERSION = '0.6.0';
+const SERVER_VERSION = '0.7.0';
 const DISCOVERY_UDP_PORT = 8766;
 const PAIRING_HTTP_PORT = 8765;
 const MOUSE_UDP_PORT = 8768;
@@ -1650,6 +1655,23 @@ export class CompanionServer {
           warn(`share: failed to open URL: ${(err as Error).message}`);
           this.reply(socket, { type: 'pc_open_url_result', ok: false, error: 'OPEN_FAILED' });
         }
+        return;
+      }
+      case 'audio_mixer_get': {
+        const mixer = await getWindowsAudioMixerState();
+        this.reply(socket, { type: 'audio_mixer_state', outputs: mixer.outputs, sessions: mixer.sessions });
+        return;
+      }
+      case 'audio_mixer_set_app': {
+        await setWindowsAppVolume(Number(msg.pid), msg.volume, msg.muted);
+        const mixer = await getWindowsAudioMixerState();
+        this.reply(socket, { type: 'audio_mixer_state', outputs: mixer.outputs, sessions: mixer.sessions });
+        return;
+      }
+      case 'audio_mixer_set_output': {
+        await setWindowsDefaultAudioOutput(String(msg.deviceId ?? ''));
+        const mixer = await getWindowsAudioMixerState();
+        this.reply(socket, { type: 'audio_mixer_state', outputs: mixer.outputs, sessions: mixer.sessions });
         return;
       }
       case 'screen_webrtc_state':

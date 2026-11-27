@@ -13,6 +13,27 @@ enum class NuvioScreenState { HOME, DETAIL, PLAYER, SEARCH, UNKNOWN }
 /** State of PC Mode audio-only Private Listening (DESIGN-SPEC §5.14.1). */
 enum class PrivateListeningState { IDLE, CONNECTING, ACTIVE, SILENT }
 
+@Immutable
+data class AudioOutputDevice(
+    val id: String,
+    val name: String,
+    val isDefault: Boolean,
+)
+
+@Immutable
+data class AudioAppSession(
+    val pid: Int,
+    val name: String,
+    val volume: Int,
+    val muted: Boolean,
+)
+
+@Immutable
+data class AudioMixerState(
+    val outputs: List<AudioOutputDevice> = emptyList(),
+    val sessions: List<AudioAppSession> = emptyList(),
+)
+
 /** Primary bottom-dock tabs in approved order (Nuvio Mode + PC Mode + Settings). */
 enum class NuvioTab(val labelEn: String, val labelPt: String) {
     REMOTE("Remote", "Remote"),

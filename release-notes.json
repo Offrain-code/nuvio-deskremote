@@ -1,16 +1,14 @@
 {
   "en": [
-    "Added Remote Swipe Pad ([ D-Pad | Swipe ]) gesture navigation mode alongside the classic D-Pad in Nuvio Mode.",
-    "Added a 100% opaque persistent Mini-Player bar above the bottom dock on the Apps tab when media is playing.",
-    "Added Android Home Screen widgets (4x1 quick controls / WoL and 4x2 Now Playing) plus direct App Shortcuts (Trackpad, Screen, Apps).",
-    "Added PC Power Control sheet in PC Mode (Lock, Monitor off, and 2nd-tap confirmed Sleep, Restart, Shut down).",
-    "Added Trackpad pinch-to-zoom, 3-finger window gestures, left-handed scroll rail, expanded PC keyboard shortcuts, and System/Dark/Light theme selector."
+    "Added Private Listening in PC Mode: stream PC audio (WASAPI loopback) to your phone without video, continuing with the screen off via a persistent notification.",
+    "Added 'Send to PC' in the Android Share Sheet to open links in the PC browser, copy text to the PC clipboard, or save photos/PDFs/files (up to 50 MB, LAN_ONLY) to Windows Downloads.",
+    "Added Multi-PC profiles: switch between paired computers in 1 tap from the top connection pill (with Wake-on-LAN) and rename/remove profiles in Settings.",
+    "Fixed Windows Nuvio window detection so starting the Companion before Nuvio HTPC never locks onto the Companion's own single-instance window."
   ],
   "pt-BR": [
-    "Novo modo Gestos ([ D-Pad | Gestos ]) no Remote com Swipe Pad em Liquid Glass (deslizar = setas, 1 toque = OK, segurar = Voltar).",
-    "Novo Mini-Player persistente 100% opaco na aba Apps com capa, progresso, Play/Pause e atalho direto para o Player.",
-    "Novos Widgets da tela inicial do Android (4x1 controle rápido / WoL e 4x2 Tocando Agora) e App Shortcuts ao segurar o ícone do app.",
-    "Nova folha Energia do PC no Modo PC (Bloquear, Apagar monitor e confirmação em 2º toque para Suspender, Reiniciar e Desligar).",
-    "Novos gestos no Trackpad (pinça zoom e 3 dedos para janelas), trilha de rolagem à esquerda (canhotos), atalhos extras no teclado e seletor de tema Sistema/Escuro/Claro."
+    "Nova Escuta Privada no Modo PC: ouça o áudio do PC (WASAPI loopback) no celular sem vídeo, continuando com a tela apagada e controles na notificação.",
+    "Novo destino 'Enviar para o PC' no compartilhamento do Android para abrir links no navegador do PC, copiar texto para a área de transferência ou salvar fotos/PDFs/arquivos em Downloads (até 50 MB, apenas Wi-Fi local LAN_ONLY).",
+    "Novo suporte a Multi-PC: alterne entre computadores pareados com 1 toque na pílula superior (com Acordar WoL) e gerencie/renomeie perfis em Ajustes.",
+    "Corrigida a detecção da janela do Nuvio no Windows para evitar que o Companion iniciado antes do Nuvio HTPC prenda as teclas na própria janela auxiliar."
   ]
 }

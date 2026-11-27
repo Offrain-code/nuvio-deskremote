@@ -2,6 +2,16 @@
 
 All notable changes to **Nuvio DeskRemote** (Android app + Windows Companion) are documented in this file.
 
+## [0.6.0] - 2026-11-27
+
+### Added
+- **Private Listening (Audio-Only WASAPI Loopback — PC Mode Only):** Added audio-only PC loopback streaming (`private_audio_start` / `private_audio_stop`) without video capture, backed by `PrivateListeningService` (`ForegroundService` with `PARTIAL_WAKE_LOCK`, `WifiLatencyLock`, and persistent `Mute`/`Stop` notification for screen-off playback), `PrivateListeningSheetDialog`, `PrivateListeningBanner` (PC Mode only), and a `Private Listening` trigger in `Screen`.
+- **Expanded Android Share Sheet ("Send to PC" — PC Mode):** Added `ShareToPcActivity` (`Send to PC`) supporting URLs (`Open in PC browser` via `pc_open_url` with strict `http/https` validation or copy to clipboard), plain text (`clipboard_set`), and file/image/PDF transfers (`POST /api/v1/pc/upload` saving to Windows `Downloads` with sanitized filenames, progress bar, 50 MB limit, and strict `LAN_ONLY` enforcement).
+- **Multi-PC Profiles (System):** Added encrypted multi-PC profile storage in `PairingManager` (`SavedPcProfile` with automatic migration from legacy single-PC pairing), 1-tap switching from the top connection pill via `MultiPcSheetDialog` (including `Wake (WoL)` for offline PCs), and profile management (`Connect`, `Rename`, 2-tap `Remove`) in `Settings`.
+
+### Fixed
+- **Nuvio Window Focus Detection on Windows (`win32.ts`):** Excluded `deskremote` and `companion-siw` titles in `findNuvioWindow()` so launching the Companion before Nuvio HTPC never caches the Companion's own single-instance helper window (`com.nuvio.deskremote.companion-siw`), restoring reliable D-Pad and shortcut key injection into Nuvio HTPC.
+
 ## [0.5.5] - 2026-11-26
 
 ### Added
